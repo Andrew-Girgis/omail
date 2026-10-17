@@ -1,0 +1,10 @@
+#!/bin/sh
+set -eu
+ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
+"$ROOT/bin/build"
+tar -czf "$ROOT/pkgbuild/omail-0.1.0.tar.gz" -C "$ROOT" \
+    --transform='s|^|omail-0.1.0/|' \
+    omail.pro bin src tests docs agent README.md LICENSE .gitignore .clang-format \
+    pkgbuild/PKGBUILD pkgbuild/omail.desktop pkgbuild/omail.svg pkgbuild/omail.service
+cd "$ROOT/pkgbuild"
+exec makepkg -fsi "$@"

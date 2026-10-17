@@ -1,0 +1,31 @@
+pkgname=omail
+pkgver=0.1.0
+pkgrel=1
+pkgdesc='Mail, calendar, and local AI for Omarchy'
+arch=('x86_64')
+license=('MIT')
+depends=('qt6-base' 'qt6-declarative' 'qt6-svg' 'qt6-wayland' 'libsecret' 'xdg-desktop-portal')
+makedepends=('gcc' 'make' 'pkgconf')
+optdepends=('ollama: local AI inference' 'poppler: PDF attachment text extraction')
+source=("omail-${pkgver}.tar.gz")
+sha256sums=('SKIP')
+
+build() {
+  cd "$srcdir/omail-$pkgver"
+  bin/build
+}
+
+package() {
+  cd "$srcdir/omail-$pkgver"
+  install -Dm755 build/omail "$pkgdir/usr/bin/omail"
+  install -Dm755 bin/setup-accounts "$pkgdir/usr/bin/omail-setup-accounts"
+  install -Dm644 pkgbuild/omail.desktop "$pkgdir/usr/share/applications/omail.desktop"
+  install -Dm644 pkgbuild/omail.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/omail.svg"
+  install -Dm644 pkgbuild/omail.service "$pkgdir/usr/lib/systemd/user/omail.service"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/omail/LICENSE"
+  install -Dm644 README.md "$pkgdir/usr/share/doc/omail/README.md"
+  install -Dm644 docs/accounts.md "$pkgdir/usr/share/doc/omail/accounts.md"
+  install -Dm644 docs/architecture.md "$pkgdir/usr/share/doc/omail/architecture.md"
+  install -Dm644 docs/screenshot.png "$pkgdir/usr/share/doc/omail/docs/screenshot.png"
+  install -Dm644 agent/SKILL.md "$pkgdir/usr/share/doc/omail/agent/SKILL.md"
+}

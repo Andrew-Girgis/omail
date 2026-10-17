@@ -1,0 +1,15 @@
+[Unit]
+Description=Omail background sync and scheduled mail
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/omail service
+Restart=on-failure
+RestartSec=10
+Environment=QT_QPA_PLATFORM=offscreen
+Environment=QT_QPA_PLATFORMTHEME=generic
+UMask=0077
+
+[Install]
+WantedBy=default.target

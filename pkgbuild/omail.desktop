@@ -1,0 +1,16 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Omail
+Name[da]=Omail
+Name[fr]=Omail
+Comment=Mail, calendar, and local AI for Omarchy
+Comment[da]=Mail, kalender og lokal AI til Omarchy
+Comment[fr]=Courriel, calendrier et IA locale pour Omarchy
+Exec=omail open
+Icon=omail
+Terminal=false
+Categories=Network;Email;
+Keywords=mail;email;calendar;AI;Outlook;Gmail;
+StartupNotify=true
+StartupWMClass=omail

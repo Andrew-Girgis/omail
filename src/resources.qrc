@@ -1,0 +1,19 @@
+<RCC><qresource prefix="/">
+  <file>i18n/en.json</file>
+  <file>i18n/da.json</file>
+  <file>i18n/fr.json</file>
+  <file>OLabel.qml</file>
+  <file>OIcon.qml</file>
+  <file>OButton.qml</file>
+  <file>OField.qml</file>
+  <file>Main.qml</file>
+  <file>Sidebar.qml</file>
+  <file>MailPage.qml</file>
+  <file>DraftDialog.qml</file>
+  <file>CalendarPage.qml</file>
+  <file>EventDialog.qml</file>
+  <file>AiPage.qml</file>
+  <file>SettingsDialog.qml</file>
+  <file alias="docs/accounts.md">../docs/accounts.md</file>
+  <file alias="agent/SKILL.md">../agent/SKILL.md</file>
+</qresource></RCC>

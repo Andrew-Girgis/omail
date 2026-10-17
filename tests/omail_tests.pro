@@ -1,0 +1,15 @@
+QT += core gui quick quickcontrols2 qml network sql dbus testlib concurrent
+CONFIG += c++17 testcase link_pkgconfig
+PKGCONFIG += libsecret-1
+TARGET = omail_tests
+TEMPLATE = app
+INCLUDEPATH += ../src
+HEADERS += ../src/store.h ../src/config.h ../src/theme.h ../src/translator.h
+SOURCES += omail_tests.cpp ../src/store.cpp ../src/config.cpp ../src/theme.cpp ../src/translator.cpp
+HEADERS += ../src/http.h ../src/vault.h ../src/oauth.h ../src/provider.h ../src/mailcodec.h
+SOURCES += ../src/http.cpp ../src/vault.cpp ../src/oauth.cpp ../src/provider.cpp ../src/mailcodec.cpp
+HEADERS += ../src/ai.h
+SOURCES += ../src/ai.cpp
+HEADERS += ../src/backend.h ../src/filepicker.h ../src/portalfilepicker.h ../src/maildocument.h ../src/cli.h
+SOURCES += ../src/backend.cpp ../src/portalfilepicker.cpp ../src/maildocument.cpp ../src/cli.cpp
+RESOURCES += ../src/resources.qrc

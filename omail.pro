@@ -1,0 +1,9 @@
+QT += core gui qml quick quickcontrols2 network sql dbus concurrent
+CONFIG += c++17 release link_pkgconfig
+PKGCONFIG += libsecret-1
+TARGET = omail
+TEMPLATE = app
+HEADERS += $$files(src/*.h)
+SOURCES += $$files(src/*.cpp)
+RESOURCES += src/resources.qrc
+QMAKE_CXXFLAGS += -Wall -Wextra

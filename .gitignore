@@ -1,0 +1,9 @@
+/build/
+/pkgbuild/pkg/
+/pkgbuild/src/
+*.pkg.tar.*
+.senv*
+.env
+*.user
+/scratch/
+/pkgbuild/*.tar.gz

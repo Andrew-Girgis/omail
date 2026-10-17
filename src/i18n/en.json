@@ -1,0 +1,6 @@
+{
+  "%n messages": {"one":"%n message","other":"%n messages"},
+  "%n events": {"one":"%n event","other":"%n events"},
+  "%n messages awaiting AI": {"one":"%n message awaiting AI","other":"%n messages awaiting AI"},
+  "+%n more": {"one":"+%n more","other":"+%n more"}
+}
