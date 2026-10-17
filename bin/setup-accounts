@@ -239,7 +239,7 @@ warn "Testing refresh tokens can expire after seven days; reconnect during devel
 pause "Press Enter once you have the Desktop OAuth JSON."
 stage "Omail: import and connect"
 omail open >/dev/null 2>&1 &
-step "Settings → Accounts → Import Google OAuth JSON. Choose the file you downloaded."
+step "Settings → Accounts → Provider setup → Import Google OAuth JSON. Choose the file you downloaded."
 step "Choose Personal and Connect Microsoft for Outlook. Choose Work and repeat for Waterloo."
 step "Choose Work and Connect Google for your Google account. Complete each browser sign-in."
 step "Click Sync, then verify a known email and calendar event."

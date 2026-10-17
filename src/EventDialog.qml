@@ -46,13 +46,14 @@ Dialog {
             Layout.fillWidth: true
             placeholderText: qsTr("Event title")
         }
-        ComboBox {
+        OComboBox {
             id: calendars
+            emptyText: qsTr("No calendars available")
             Layout.fillWidth: true
             model: backend.data.calendars
             textRole: "name"
             valueRole: "id"
-            enabled: !dialog.event.id
+            enabled: count > 0 && !dialog.event.id
         }
         RowLayout {
             Layout.fillWidth: true
@@ -80,7 +81,7 @@ Dialog {
                 id: allDay
                 text: qsTr("All day")
             }
-            ComboBox {
+            OComboBox {
                 id: repeat
                 visible: !dialog.event.id
                 model: [qsTr("Does not repeat"), qsTr("Daily"), qsTr("Weekly"), qsTr("Monthly")]

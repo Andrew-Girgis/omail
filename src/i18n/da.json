@@ -255,5 +255,21 @@
   "Replace the open draft?": "Erstat den åbne kladde?",
   "Save your current draft first, or discard its unsaved changes.": "Gem først den aktuelle kladde, eller kassér dens ugemte ændringer.",
   "Views in order · comma-separated IDs": "Visninger i rækkefølge · ID’er adskilt med komma",
-  "Show topic views": "Vis emnevisninger"
+  "Show topic views": "Vis emnevisninger",
+  "No options available": "Ingen valgmuligheder",
+  "No accounts connected": "Ingen konti forbundet",
+  "No calendars available": "Ingen kalendere tilgængelige",
+  "No profiles available": "Ingen profiler tilgængelige",
+  "Thin": "Smal",
+  "Medium": "Mellem",
+  "Wide": "Bred",
+  "Custom": "Tilpasset",
+  "Choose a profile, then sign in with Microsoft or Google to connect mail and calendars.": "Vælg en profil, og log ind med Microsoft eller Google for at forbinde mail og kalendere.",
+  "This preview needs a one-time provider setup before sign-in. Open Provider setup below for instructions.": "Denne forhåndsvisning kræver en engangsopsætning før login. Åbn Udbyderopsætning nedenfor for vejledning.",
+  "Provider setup": "Udbyderopsætning",
+  "Google configured": "Google er konfigureret",
+  "Google not configured": "Google er ikke konfigureret",
+  "Drag the handles beside mail views in the sidebar to reorder them. Exact pane widths can be set in your config or by your agent.": "Træk i håndtagene ved mailvisningerne i sidepanelet for at ændre rækkefølgen. Præcise panelbredder kan indstilles i din konfiguration eller af din agent.",
+  "Drag to reorder · Alt+Up / Alt+Down when focused": "Træk for at ændre rækkefølgen · Alt+Op / Alt+Ned med fokus",
+  "Reorder %1": "Flyt %1"
 }

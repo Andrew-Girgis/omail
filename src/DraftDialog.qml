@@ -52,13 +52,14 @@ Dialog {
                 color: theme.muted
                 Layout.preferredWidth: 50
             }
-            ComboBox {
+            OComboBox {
                 id: sender
+                emptyText: qsTr("No accounts connected")
                 Layout.fillWidth: true
                 model: backend.data.accounts
                 textRole: "email"
                 valueRole: "id"
-                enabled: dialog.draft.mode === "new" || !dialog.draft.mode
+                enabled: count > 0 && (dialog.draft.mode === "new" || !dialog.draft.mode)
                 onActivated: dialog.dirty = true
                 Material.roundedScale: theme.radius
             }

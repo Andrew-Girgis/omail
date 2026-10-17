@@ -43,7 +43,7 @@ The v1 CLI intentionally exposes no mail, calendar, send, delete, or approval mu
 
 ## Verification on this desktop
 
-The Qt Test suite reports 20 passed, 0 failed, and 1 optional local-model check skipped in its default offline run. It exercises provider pagination and token refresh with synthetic HTTP responses, reply recipients and attachments, Priority transitions, scheduling holds and concurrency, profile isolation, read-only CLI behavior, live theme/language changes, and the real QML editor at three window widths.
+The Qt Test suite reports 23 passed, 0 failed, and 1 optional local-model check skipped in its default offline run. It exercises provider pagination and token refresh with synthetic HTTP responses, reply recipients and attachments, Priority transitions, scheduling holds and concurrency, profile isolation, read-only CLI behavior, live theme/language changes, and the real QML editor at three window widths. UI regressions also cover floating field labels at all supported font extremes, empty account dropdowns, direct account-settings navigation, pane presets with custom config values, and actual sidebar pointer dragging with persisted and externally edited order.
 
 The optional check was also run separately against the installed local `qwen3.5:4b` Ollama model and passed classification, summarization, and an answer with valid source citations. It used only made-up mail. Live Microsoft/Google authentication, synchronization, meeting responses, and actual delivery remain unverified until account registration and user sign-in are complete.
 

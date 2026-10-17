@@ -51,6 +51,18 @@ omail skill install --json
 
 Mail and calendar commands are read-only. Config commands may change settings. The bundled [agent skill](agent/SKILL.md) installs into `~/.codex/skills/omail`; pass `--path` to choose another skill directory. CLI errors go to stderr and exit 1. Success exits 0. No display is required.
 
+## Personalize the layout
+
+Appearance offers **Thin**, **Medium**, and **Wide** pane presets. Sidebar widths are 180 / 224 / 300 pixels; message list widths are 280 / 360 / 480 pixels. Set an exact width through `omail config set sidebarWidth 237 --json` or `omail config set listWidth 427 --json`, or edit `~/.config/omail/settings.json`. Settings shows **Custom** for an exact value between presets and preserves it until you choose a preset.
+
+Drag the grip beside a mail view in the sidebar to reorder it. A focused view also supports **Alt+Up / Alt+Down**. The order is saved immediately and shared with the agent interface:
+
+```sh
+omail config set viewOrder priority,inbox,flagged,drafts,sent,archive,junk,trash,all --json
+```
+
+Configuration changes update the open app live. `viewOrder` also supports hiding views by omitting their IDs; it must contain unique, valid IDs.
+
 ## Build and install
 
 ```sh

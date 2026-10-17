@@ -48,4 +48,6 @@ omail config set ollamaModel qwen3.5:4b --json
 
 Settings cover fonts, density, pane widths, keyboard shortcuts, cache duration, sync interval, notifications, calendar view, local AI endpoint/model, and public OAuth client IDs. Live config changes are picked up by the GUI and daemon. Never put secrets in settings; OAuth uses the desktop keyring. Use the local `s` store if development needs secrets.
 
+For pane sizing, `sidebarWidth` accepts 180–400 pixels and `listWidth` accepts 280–700. The GUI's Thin / Medium / Wide presets map to sidebar 180 / 224 / 300 and list 280 / 360 / 480; other values appear as Custom. Read current `viewOrder` before reordering so you preserve the user's visible views. The comma-separated IDs must be unique; omitting an ID hides that view. Sidebar drag and drop writes this same setting.
+
 There are no CLI send, delete, queue, archive, event-create, or approval commands. Do not bypass this contract by writing SQLite or driving the GUI for an agent action. Direct the user to review and perform those actions in Omail. `omail open` opens the GUI. `omail-setup-accounts` guides OAuth registration. Installed docs live in `/usr/share/doc/omail`.

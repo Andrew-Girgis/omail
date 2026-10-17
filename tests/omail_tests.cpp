@@ -11,6 +11,7 @@
 #include <QJsonDocument>
 #include <QProcess>
 #include <QQmlApplicationEngine>
+#include <QQmlComponent>
 #include <QQmlContext>
 #include <QQuickStyle>
 #include <QQuickWindow>
@@ -60,6 +61,11 @@ class MemoryVault : public CredentialVault {
 class OmailTests : public QObject {
     Q_OBJECT
   private:
+    static bool capture(QQuickWindow *window, const QString &name) {
+        const auto directory = qEnvironmentVariable("OMAIL_TEST_CAPTURE_DIR");
+        return directory.isEmpty() || (QDir().mkpath(directory) &&
+                                       window->grabWindow().save(directory + "/" + name + ".png"));
+    }
     static void account(Store &store, const QString &id = "a",
                         const QString &profile = "personal") {
         QVERIFY(store.saveAccount({{"id", id},
@@ -430,6 +436,244 @@ class OmailTests : public QObject {
         QTest::qWait(80);
         window->setProperty("tab", "ai");
         QTest::qWait(80);
+        QVERIFY2(warnings.isEmpty(), qPrintable(warnings.join('\n')));
+    }
+    void fieldLabelsStayInsideTheBorder() {
+        QTemporaryDir dir;
+        Backend backend(dir.path() + "/data", dir.path() + "/config", true);
+        Theme theme(dir.path() + "/theme");
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("backend", &backend);
+        engine.rootContext()->setContextProperty("theme", &theme);
+        QQmlComponent component(&engine, QUrl("qrc:/OField.qml"));
+        QScopedPointer<QObject> object(component.create());
+        QVERIFY2(object, qPrintable(component.errorString()));
+        auto field = qobject_cast<QQuickItem *>(object.data());
+        QVERIFY(field);
+        QQuickWindow window;
+        window.resize(620, 160);
+        window.setColor(theme.background());
+        field->setParentItem(window.contentItem());
+        field->setPosition({20, 20});
+        field->setWidth(580);
+        field->setProperty("placeholderText", "Microsoft Application (client) ID");
+        window.show();
+        for (int fontSize : {11, 14, 28}) {
+            QVERIFY(backend.setSetting("fontSize", fontSize));
+            field->setHeight(field->implicitHeight());
+            for (const auto &text : {QString(""), QString("public-client-id")}) {
+                field->setProperty("text", text);
+                for (bool focused : {false, true}) {
+                    if (focused)
+                        field->forceActiveFocus();
+                    else
+                        window.contentItem()->forceActiveFocus();
+                    QTest::qWait(250);
+                    int labels = 0;
+                    const auto children = field->findChildren<QQuickItem *>();
+                    for (auto *label : children) {
+                        if (label->property("text").toString() !=
+                                field->property("placeholderText").toString() ||
+                            !label->isVisible() || label->opacity() == 0)
+                            continue;
+                        ++labels;
+                        const auto bounds = label->mapRectToItem(
+                            field, QRectF(0, 0, label->width(), label->height()));
+                        QVERIFY2(bounds.top() >= 3,
+                                 qPrintable(QString("Label overlaps border: top=%1, font=%2, "
+                                                    "focused=%3, text=%4")
+                                                .arg(bounds.top())
+                                                .arg(fontSize)
+                                                .arg(focused)
+                                                .arg(text)));
+                        QVERIFY(bounds.bottom() <= field->height() - 3);
+                    }
+                    QVERIFY(labels > 0);
+                    if (focused && text.isEmpty())
+                        QVERIFY(capture(&window, QString("field-%1").arg(fontSize)));
+                }
+            }
+        }
+    }
+    void emptyAccountDropdownDoesNotOpen() {
+        QTemporaryDir dir;
+        Backend backend(dir.path() + "/data", dir.path() + "/config");
+        Theme theme(dir.path() + "/theme");
+        Translator translator(dir.path() + "/language");
+        QQmlApplicationEngine engine;
+        engine.rootContext()->setContextProperty("backend", &backend);
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("translator", &translator);
+        engine.rootContext()->setContextProperty("initialWidth", 1360);
+        engine.rootContext()->setContextProperty("initialHeight", 860);
+        engine.load(QUrl("qrc:/Main.qml"));
+        QVERIFY(!engine.rootObjects().isEmpty());
+        auto window = qobject_cast<QQuickWindow *>(engine.rootObjects().first());
+        QVERIFY(window);
+        QVERIFY(QMetaObject::invokeMethod(window, "showSettings", Q_ARG(QVariant, "advanced")));
+        QTest::qWait(250);
+        QQuickItem *emptyAccount = nullptr;
+        for (auto *item : window->findChildren<QQuickItem *>())
+            if (item->property("textRole").toString() == "email" &&
+                item->property("count").toInt() == 0)
+                emptyAccount = item;
+        QVERIFY(emptyAccount);
+        QVERIFY2(!emptyAccount->isEnabled(), "An empty account selector must not open a popup.");
+        QVERIFY(!emptyAccount->property("displayText").toString().isEmpty());
+        auto popup = emptyAccount->property("popup").value<QObject *>();
+        QVERIFY(popup);
+        QTest::mouseClick(
+            window, Qt::LeftButton, Qt::NoModifier,
+            emptyAccount->mapToScene({emptyAccount->width() / 2, emptyAccount->height() / 2})
+                .toPoint());
+        emptyAccount->forceActiveFocus();
+        QTest::keyClick(window, Qt::Key_Space);
+        QVERIFY(!popup->property("visible").toBool());
+        QVERIFY(capture(window, "empty-dropdown"));
+        auto settings = window->findChild<QObject *>("settingsDialog");
+        QVERIFY(settings);
+        settings->setProperty("currentSection", 1);
+        QVERIFY(QMetaObject::invokeMethod(settings, "close"));
+        QTRY_VERIFY(!settings->property("visible").toBool());
+        auto click = [&](QQuickItem *button) {
+            QTest::mouseClick(
+                window, Qt::LeftButton, Qt::NoModifier,
+                button->mapToScene({button->width() / 2, button->height() / 2}).toPoint());
+        };
+        auto connectButton = window->findChild<QQuickItem *>("mailConnectButton");
+        QVERIFY(connectButton);
+        click(connectButton);
+        QTRY_VERIFY(settings->property("opened").toBool());
+        QCOMPARE(settings->property("currentSection").toInt(), 0);
+        settings->setProperty("currentSection", 1);
+        QVERIFY(QMetaObject::invokeMethod(settings, "close"));
+        QTRY_VERIFY(!settings->property("visible").toBool());
+        window->setProperty("tab", "calendar");
+        QTest::qWait(100);
+        auto calendarButton = window->findChild<QQuickItem *>("calendarManageAccountsButton");
+        QVERIFY(calendarButton);
+        click(calendarButton);
+        QTRY_VERIFY(settings->property("opened").toBool());
+        QCOMPARE(settings->property("currentSection").toInt(), 0);
+    }
+    void settingsRoutingPresetsAndSidebarDragPersist() {
+        QTemporaryDir dir;
+        Backend backend(dir.path() + "/data", dir.path() + "/config", true);
+        Theme theme(dir.path() + "/theme");
+        Translator translator(dir.path() + "/language");
+        QQmlApplicationEngine engine;
+        QStringList warnings;
+        connect(&engine, &QQmlEngine::warnings, this, [&](const QList<QQmlError> &errors) {
+            for (const auto &e : errors)
+                warnings << e.toString();
+        });
+        engine.rootContext()->setContextProperty("backend", &backend);
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("translator", &translator);
+        engine.rootContext()->setContextProperty("initialWidth", 1360);
+        engine.rootContext()->setContextProperty("initialHeight", 960);
+        engine.load(QUrl("qrc:/Main.qml"));
+        QVERIFY2(!engine.rootObjects().isEmpty(), qPrintable(warnings.join('\n')));
+        auto window = qobject_cast<QQuickWindow *>(engine.rootObjects().first());
+        QVERIFY(window);
+        QTest::qWait(100);
+        auto settings = window->findChild<QObject *>("settingsDialog");
+        QVERIFY(settings);
+        QVERIFY(QMetaObject::invokeMethod(window, "showSettings", Q_ARG(QVariant, "appearance")));
+        QTRY_VERIFY(settings->property("opened").toBool());
+        QCOMPARE(settings->property("currentSection").toInt(), 1);
+        auto sidebarPreset = window->findChild<QQuickItem *>("sidebarWidthPreset");
+        auto listPreset = window->findChild<QQuickItem *>("listWidthPreset");
+        QVERIFY(sidebarPreset);
+        QVERIFY(listPreset);
+        QCOMPARE(sidebarPreset->property("currentText").toString(), QString("Medium"));
+        sidebarPreset->forceActiveFocus();
+        QTest::keyClick(window, Qt::Key_Down);
+        QTRY_COMPARE(backend.settings()["sidebarWidth"].toInt(), 300);
+        QVERIFY(backend.setSetting("sidebarWidth", 237));
+        QTRY_COMPARE(sidebarPreset->property("currentText").toString(), QString("Custom"));
+        QVERIFY(backend.setSetting("listWidth", 427));
+        QTRY_COMPARE(listPreset->property("currentText").toString(), QString("Custom"));
+        QTest::qWait(100);
+        QVERIFY(capture(window, "appearance"));
+        listPreset->forceActiveFocus();
+        QTest::keyClick(window, Qt::Key_Up);
+        QTRY_COMPARE(backend.settings()["listWidth"].toInt(), 480);
+        QVERIFY(backend.setSetting("sidebarWidth", 224));
+        QVERIFY(backend.setSetting("listWidth", 360));
+        QVERIFY(QMetaObject::invokeMethod(settings, "close"));
+        QTRY_VERIFY(!settings->property("visible").toBool());
+        // Repeater delegates belong to the visual tree, not the window's QObject tree.
+        std::function<QQuickItem *(QQuickItem *, const QString &)> findVisual =
+            [&](QQuickItem *item, const QString &name) -> QQuickItem * {
+            if (item->objectName() == name && item->isVisible())
+                return item;
+            for (auto *child : item->childItems())
+                if (auto match = findVisual(child, name))
+                    return match;
+            return nullptr;
+        };
+        auto visibleItem = [&](const QString &name) {
+            return findVisual(window->contentItem(), name);
+        };
+        auto click = [&](QQuickItem *item) {
+            QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier,
+                              item->mapToScene({item->width() / 2, item->height() / 2}).toPoint());
+        };
+        auto manage = visibleItem("manageAccountsButton");
+        QVERIFY(manage);
+        click(manage);
+        QTRY_VERIFY(settings->property("opened").toBool());
+        QCOMPARE(settings->property("currentSection").toInt(), 0);
+        QTest::qWait(100);
+        QVERIFY(capture(window, "accounts"));
+        QVERIFY(QMetaObject::invokeMethod(settings, "close"));
+        QTRY_VERIFY(!settings->property("visible").toBool());
+
+        // Drive the actual handle; testing moveView alone would miss broken pointer routing.
+        QQuickItem *handle = nullptr;
+        QQuickItem *target = nullptr;
+        QTRY_VERIFY((handle = visibleItem("viewDrag-inbox")));
+        QTRY_VERIFY((target = visibleItem("mailView-flagged")));
+        const auto start =
+            handle->mapToScene({handle->width() / 2, handle->height() / 2}).toPoint();
+        const auto end = target->mapToScene({target->width() - 14, target->height() / 2}).toPoint();
+        QTest::mousePress(window, Qt::LeftButton, Qt::NoModifier, start);
+        for (int step = 1; step <= 12; ++step)
+            QTest::mouseMove(window, start + (end - start) * step / 12, 20);
+        QTest::mouseRelease(window, Qt::LeftButton, Qt::NoModifier, end);
+        QTRY_COMPARE(backend.settings()["viewOrder"].toString(),
+                     QString("priority,flagged,inbox,drafts,sent,archive,junk,trash,all"));
+        QCOMPARE(backend.data()["folder"].toString(), QString("inbox"));
+        Config persisted(dir.path() + "/config");
+        QCOMPARE(persisted.get("viewOrder").toString(), backend.settings()["viewOrder"].toString());
+        // External config changes update the sidebar without restarting the GUI.
+        QString error;
+        QVERIFY(persisted.set("viewOrder", "sent,inbox,priority", &error));
+        QTRY_COMPARE(backend.settings()["viewOrder"].toString(), QString("sent,inbox,priority"));
+        QTRY_VERIFY(visibleItem("mailView-sent"));
+        QTRY_VERIFY(visibleItem("mailView-sent")->mapToScene({0, 0}).y() <
+                    visibleItem("mailView-inbox")->mapToScene({0, 0}).y());
+        auto sent = visibleItem("mailView-sent");
+        sent->forceActiveFocus();
+        QTest::keyClick(window, Qt::Key_Down, Qt::AltModifier);
+        QTRY_COMPARE(backend.settings()["viewOrder"].toString(), QString("inbox,sent,priority"));
+        QTest::qWait(100);
+        QVERIFY(capture(window, "reordered-sidebar"));
+        QVERIFY(QMetaObject::invokeMethod(window, "showSettings", Q_ARG(QVariant, "appearance")));
+        QFile language(dir.path() + "/language");
+        QCoreApplication::installTranslator(&translator);
+        connect(&translator, &Translator::changed, &engine, &QQmlApplicationEngine::retranslate);
+        QVERIFY(language.open(QIODevice::WriteOnly));
+        language.write("da\n");
+        language.close();
+        QTRY_COMPARE(translator.language(), QString("da"));
+        QTest::qWait(250);
+        QCOMPARE(backend.settings()["sidebarWidth"].toInt(), 224);
+        QCOMPARE(backend.settings()["listWidth"].toInt(), 360);
+        QCOMPARE(sidebarPreset->property("currentText").toString(), QString("Mellem"));
+        QCOMPARE(listPreset->property("currentText").toString(), QString("Mellem"));
+        QVERIFY(capture(window, "appearance-da"));
         QVERIFY2(warnings.isEmpty(), qPrintable(warnings.join('\n')));
     }
     void profileSearchIsIsolated() {

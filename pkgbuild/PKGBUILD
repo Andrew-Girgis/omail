@@ -1,6 +1,6 @@
 pkgname=omail
 pkgver=0.1.0
-pkgrel=1
+pkgrel=2
 pkgdesc='Mail, calendar, and local AI for Omarchy'
 arch=('x86_64')
 license=('MIT')

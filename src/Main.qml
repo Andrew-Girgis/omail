@@ -25,8 +25,8 @@ ApplicationWindow {
     property bool wide: width >= Math.max(1160, backend.settings.sidebarWidth + backend.settings.listWidth + 480)
     property bool detail: false
     readonly property bool typing: activeFocusItem && (activeFocusItem.hasOwnProperty("cursorPosition") || activeFocusItem.hasOwnProperty("inputMethodComposing"))
-    function showSettings() {
-        settingsDialog.open();
+    function showSettings(section) {
+        settingsDialog.showSection(section || "accounts");
     }
     function compose() {
         backend.newDraft();
@@ -229,7 +229,7 @@ ApplicationWindow {
                         objectName: "settingsButton"
                         glyph: "settings"
                         tip: qsTr("Settings")
-                        onClicked: showSettings()
+                        onClicked: showSettings("current")
                     }
                 }
                 Rectangle {

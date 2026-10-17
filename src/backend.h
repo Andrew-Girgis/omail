@@ -41,6 +41,7 @@ class Backend : public QObject {
     Q_INVOKABLE void sync();
     Q_INVOKABLE void fetchOlder(const QString &account, const QString &query);
     Q_INVOKABLE bool setSetting(const QString &key, const QVariant &value);
+    Q_INVOKABLE bool moveView(const QString &source, const QString &target);
     Q_INVOKABLE void saveProfile(const QString &id, const QString &name, const QString &color);
     Q_INVOKABLE void assignAccount(const QString &account, const QString &profile);
     Q_INVOKABLE void connectAccount(const QString &provider, const QString &profile);

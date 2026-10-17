@@ -6,16 +6,35 @@ import QtQuick.Layouts
 Dialog {
     id: dialog
     required property var window
+    property alias currentSection: tabs.currentIndex
+    function showSection(section) {
+        const index = ["accounts", "appearance", "ai", "advanced"].indexOf(section);
+        if (index >= 0) {
+            tabs.currentIndex = index;
+            scroll.contentItem.contentY = 0;
+        }
+        open();
+    }
+    objectName: "settingsDialog"
     anchors.centerIn: parent
     width: Math.min(820, window.width - 24)
     height: Math.min(810, window.height - 32)
     title: qsTr("Settings")
     modal: true
     standardButtons: Dialog.Close
+    Material.roundedScale: theme.radius
+    Material.elevation: 0
+    background: Rectangle {
+        color: theme.panel
+        radius: theme.radius
+        border.width: 1
+        border.color: theme.border
+    }
     contentItem: ColumnLayout {
         spacing: 12
         TabBar {
             id: tabs
+            objectName: "settingsTabs"
             Layout.fillWidth: true
             TabButton {
                 text: qsTr("Accounts")
@@ -50,40 +69,15 @@ Dialog {
                         Layout.topMargin: 8
                     }
                     OLabel {
-                        text: qsTr("Omail needs its own Microsoft and Google OAuth registrations. Start with the guide, then sign in using your browser.")
+                        text: qsTr("Choose a profile, then sign in with Microsoft or Google to connect mail and calendars.")
                         wrapMode: Text.Wrap
                         elide: Text.ElideNone
                         Layout.fillWidth: true
                         color: theme.muted
                     }
-                    OButton {
-                        text: qsTr("Open registration guide")
-                        glyph: "external"
-                        selected: true
-                        onClicked: backend.openGuide()
-                    }
-                    OField {
-                        id: msClient
-                        Layout.fillWidth: true
-                        placeholderText: qsTr("Microsoft Application (client) ID")
-                        text: backend.settings.microsoftClientId
-                        onEditingFinished: backend.setSetting("microsoftClientId", text.trim())
-                    }
-                    RowLayout {
-                        Layout.fillWidth: true
-                        OButton {
-                            text: qsTr("Import Google OAuth JSON")
-                            glyph: "folder"
-                            onClicked: backend.importGoogleClient()
-                        }
-                        OLabel {
-                            text: backend.settings.googleClientId ? qsTr("Configured") : qsTr("Not configured")
-                            color: theme.muted
-                            font.pixelSize: 12
-                        }
-                    }
-                    ComboBox {
+                    OComboBox {
                         id: connectProfile
+                        emptyText: qsTr("No profiles available")
                         model: backend.data.profiles
                         textRole: "name"
                         valueRole: "id"
@@ -96,13 +90,55 @@ Dialog {
                             text: qsTr("Connect Microsoft")
                             glyph: "plus"
                             primary: true
+                            enabled: connectProfile.count > 0 && !!backend.settings.microsoftClientId
                             onClicked: backend.connectAccount("microsoft", connectProfile.currentValue)
                         }
                         OButton {
                             text: qsTr("Connect Google")
                             glyph: "plus"
                             primary: true
+                            enabled: connectProfile.count > 0 && !!backend.settings.googleClientId
                             onClicked: backend.connectAccount("google", connectProfile.currentValue)
+                        }
+                    }
+                    OLabel {
+                        visible: !backend.settings.microsoftClientId || !backend.settings.googleClientId
+                        text: qsTr("This preview needs a one-time provider setup before sign-in. Open Provider setup below for instructions.")
+                        wrapMode: Text.Wrap
+                        elide: Text.ElideNone
+                        color: theme.muted
+                        Layout.fillWidth: true
+                    }
+                    OButton {
+                        id: providerSetupToggle
+                        text: qsTr("Provider setup")
+                        glyph: "settings"
+                        checkable: true
+                        checked: false
+                    }
+                    ColumnLayout {
+                        visible: providerSetupToggle.checked
+                        Layout.fillWidth: true
+                        spacing: 10
+                        OButton {
+                            text: qsTr("Open registration guide")
+                            glyph: "external"
+                            onClicked: backend.openGuide()
+                        }
+                        OField {
+                            Layout.fillWidth: true
+                            placeholderText: qsTr("Microsoft Application (client) ID")
+                            text: backend.settings.microsoftClientId
+                            onEditingFinished: backend.setSetting("microsoftClientId", text.trim())
+                        }
+                        OButton {
+                            text: qsTr("Import Google OAuth JSON")
+                            glyph: "folder"
+                            onClicked: backend.importGoogleClient()
+                        }
+                        OLabel {
+                            text: backend.settings.googleClientId ? qsTr("Google configured") : qsTr("Google not configured")
+                            color: theme.muted
                         }
                     }
                     OLabel {
@@ -140,12 +176,14 @@ Dialog {
                             }
                             RowLayout {
                                 Layout.fillWidth: true
-                                ComboBox {
+                                OComboBox {
                                     model: backend.data.profiles
                                     textRole: "name"
                                     valueRole: "id"
                                     Layout.fillWidth: true
-                                    currentIndex: backend.data.profiles.findIndex(p => p.id === modelData.profile_id)
+                                    currentIndex: backend.data.profiles.findIndex((p) => {
+                                        return p.id === modelData.profile_id;
+                                    })
                                     onActivated: backend.assignAccount(modelData.id, currentValue)
                                 }
                                 OButton {
@@ -245,7 +283,7 @@ Dialog {
                             text: qsTr("Density")
                             Layout.fillWidth: true
                         }
-                        ComboBox {
+                        OComboBox {
                             model: [qsTr("Comfortable"), qsTr("Compact")]
                             currentIndex: backend.settings.density === "compact" ? 1 : 0
                             onActivated: backend.setSetting("density", currentIndex ? "compact" : "comfortable")
@@ -256,12 +294,19 @@ Dialog {
                             text: qsTr("Sidebar width")
                             Layout.fillWidth: true
                         }
-                        SpinBox {
-                            from: 180
-                            to: 400
-                            stepSize: 10
-                            value: backend.settings.sidebarWidth
-                            onValueModified: backend.setSetting("sidebarWidth", value)
+                        OComboBox {
+                            property var widths: [180, 224, 300]
+                            property int presetIndex: widths.indexOf(backend.settings.sidebarWidth)
+                            objectName: "sidebarWidthPreset"
+                            model: presetIndex < 0 ? [qsTr("Thin"), qsTr("Medium"), qsTr("Wide"), qsTr("Custom")] : [qsTr("Thin"), qsTr("Medium"), qsTr("Wide")]
+                            currentIndex: {
+                                model;
+                                return presetIndex < 0 ? 3 : presetIndex;
+                            }
+                            onActivated: {
+                                if (currentIndex < widths.length)
+                                    backend.setSetting("sidebarWidth", widths[currentIndex]);
+                            }
                         }
                     }
                     RowLayout {
@@ -269,19 +314,27 @@ Dialog {
                             text: qsTr("Message list width")
                             Layout.fillWidth: true
                         }
-                        SpinBox {
-                            from: 280
-                            to: 700
-                            stepSize: 10
-                            value: backend.settings.listWidth
-                            onValueModified: backend.setSetting("listWidth", value)
+                        OComboBox {
+                            property var widths: [280, 360, 480]
+                            property int presetIndex: widths.indexOf(backend.settings.listWidth)
+                            objectName: "listWidthPreset"
+                            model: presetIndex < 0 ? [qsTr("Thin"), qsTr("Medium"), qsTr("Wide"), qsTr("Custom")] : [qsTr("Thin"), qsTr("Medium"), qsTr("Wide")]
+                            currentIndex: {
+                                model;
+                                return presetIndex < 0 ? 3 : presetIndex;
+                            }
+                            onActivated: {
+                                if (currentIndex < widths.length)
+                                    backend.setSetting("listWidth", widths[currentIndex]);
+                            }
                         }
                     }
-                    OField {
+                    OLabel {
                         Layout.fillWidth: true
-                        placeholderText: qsTr("Views in order · comma-separated IDs")
-                        text: backend.settings.viewOrder
-                        onEditingFinished: backend.setSetting("viewOrder", text)
+                        text: qsTr("Drag the handles beside mail views in the sidebar to reorder them. Exact pane widths can be set in your config or by your agent.")
+                        color: theme.muted
+                        wrapMode: Text.Wrap
+                        elide: Text.ElideNone
                     }
                     Switch {
                         text: qsTr("Show topic views")
@@ -295,32 +348,25 @@ Dialog {
                         Layout.topMargin: 16
                     }
                     Repeater {
-                        model: [
-                            {
-                                key: "shortcutCompose",
-                                name: qsTr("Compose")
-                            },
-                            {
-                                key: "shortcutSearch",
-                                name: qsTr("Search")
-                            },
-                            {
-                                key: "shortcutSync",
-                                name: qsTr("Sync")
-                            },
-                            {
-                                key: "shortcutMail",
-                                name: qsTr("Mail")
-                            },
-                            {
-                                key: "shortcutCalendar",
-                                name: qsTr("Calendar")
-                            },
-                            {
-                                key: "shortcutAi",
-                                name: qsTr("AI")
-                            }
-                        ]
+                        model: [{
+                            "key": "shortcutCompose",
+                            "name": qsTr("Compose")
+                        }, {
+                            "key": "shortcutSearch",
+                            "name": qsTr("Search")
+                        }, {
+                            "key": "shortcutSync",
+                            "name": qsTr("Sync")
+                        }, {
+                            "key": "shortcutMail",
+                            "name": qsTr("Mail")
+                        }, {
+                            "key": "shortcutCalendar",
+                            "name": qsTr("Calendar")
+                        }, {
+                            "key": "shortcutAi",
+                            "name": qsTr("AI")
+                        }]
                         RowLayout {
                             required property var modelData
                             Layout.fillWidth: true
@@ -454,8 +500,9 @@ Dialog {
                         elide: Text.ElideNone
                         Layout.fillWidth: true
                     }
-                    ComboBox {
+                    OComboBox {
                         id: olderAccount
+                        emptyText: qsTr("No accounts connected")
                         model: backend.data.accounts
                         textRole: "email"
                         valueRole: "id"

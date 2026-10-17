@@ -6,6 +6,7 @@
   <file>OIcon.qml</file>
   <file>OButton.qml</file>
   <file>OField.qml</file>
+  <file>OComboBox.qml</file>
   <file>Main.qml</file>
   <file>Sidebar.qml</file>
   <file>MailPage.qml</file>

@@ -4,7 +4,8 @@ import QtQuick.Controls.Material
 
 TextField {
     id: field
-    implicitHeight: Math.max(42, backend.settings.fontSize + 20)
+    // Filled labels float inside the custom border instead of through its top edge.
+    implicitHeight: Math.max(56, backend.settings.fontSize * 2 + 28)
     color: theme.foreground
     placeholderTextColor: theme.muted
     selectionColor: theme.accent
@@ -14,6 +15,7 @@ TextField {
     leftPadding: 12
     rightPadding: 12
     Material.roundedScale: theme.radius
+    Material.containerStyle: Material.Filled
     background: Rectangle {
         color: theme.panel
         radius: theme.radius

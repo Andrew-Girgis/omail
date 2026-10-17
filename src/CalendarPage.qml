@@ -341,6 +341,7 @@ Item {
                             horizontalAlignment: Text.AlignHCenter
                         }
                         OButton {
+                            objectName: "calendarManageAccountsButton"
                             text: qsTr("Manage accounts")
                             primary: true
                             Layout.alignment: Qt.AlignHCenter

@@ -221,10 +221,11 @@ Item {
                             elide: Text.ElideNone
                         }
                         OButton {
+                            objectName: "mailConnectButton"
                             text: backend.data.accounts.length ? qsTr("Search older mail") : qsTr("Connect an account")
                             primary: true
                             Layout.alignment: Qt.AlignHCenter
-                            onClicked: window.showSettings()
+                            onClicked: window.showSettings(backend.data.accounts.length ? "advanced" : "accounts")
                         }
                     }
                 }

@@ -196,6 +196,15 @@ bool Backend::setSetting(const QString &key, const QVariant &v) {
     }
     return true;
 }
+bool Backend::moveView(const QString &source, const QString &target) {
+    auto views = m_config.get("viewOrder").toString().split(',');
+    const int from = views.indexOf(source);
+    const int to = views.indexOf(target);
+    if (from < 0 || to < 0 || from == to)
+        return false;
+    views.move(from, to);
+    return setSetting("viewOrder", views.join(','));
+}
 void Backend::saveProfile(const QString &id, const QString &name, const QString &color) {
     if (name.trimmed().isEmpty() || name.size() > 80 || !QColor(color).isValid()) {
         fail(tr("Choose a profile name and a valid colour."));
