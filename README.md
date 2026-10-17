@@ -1,8 +1,20 @@
-![Omail with synthetic messages and the default accent](docs/screenshot.png)
+```text
+ ▄██████▄    ▄▄▄▄███▄▄▄▄      ▄████████  ▄█   ▄█
+███    ███ ▄██▀▀▀███▀▀▀██▄   ███    ███ ███  ███
+███    ███ ███   ███   ███   ███    ███ ███▌ ███
+███    ███ ███   ███   ███   ███    ███ ███▌ ███
+███    ███ ███   ███   ███ ▀███████████ ███▌ ███
+███    ███ ███   ███   ███   ███    ███ ███  ███
+███    ███ ███   ███   ███   ███    ███ ███  ███▌    ▄
+ ▀██████▀   ▀█   ███   █▀    ███    █▀  █▀   █████▄▄██
+                                             ▀
+```
 
 # Omail
 
 A native Omarchy mail and calendar client with a local AI assistant. C++ and Qt Quick, live Omarchy theme and language, one binary, a JSON CLI, and a background login service.
+
+![Omail with synthetic messages and the default accent](docs/screenshot.png)
 
 Open **Omail** from the app launcher (`Super + Space`) or run `omail open`. `omail open --demo` opens an isolated preview with made-up mail; it never touches connected accounts.
 
