@@ -1,0 +1,78 @@
+name: Bug report
+description: Something in Omail looks or behaves wrong.
+labels: ["bug", "needs-repro"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This repository is public. Never paste real mail, addresses, or screenshots of a real inbox.
+        Reproduce with `--demo` and a synthetic fixture in `tests/fixtures/mail/` instead.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: One or two sentences on what is wrong.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Reading pane
+        - Mail list
+        - Compose
+        - Calendar
+        - AI
+        - Settings
+        - Sync and accounts
+        - CLI
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: What a person does, step by step.
+      placeholder: |
+        1. Open Omail at 420 px wide
+        2. Open "This week in quiet software"
+    validations:
+      required: true
+  - type: textarea
+    id: current
+    attributes:
+      label: Current result
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected result
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Agent repro
+      description: |
+        Commands that reach the bug the same way every run. Pin the clock and time zone, use --demo,
+        and name the fixture and window size. Leave a note if this is not yet possible.
+      render: sh
+      placeholder: |
+        bin/build
+        TZ=UTC OMAIL_NOW=2026-01-15T09:00:00Z build/omail --demo --fixtures tests/fixtures/mail \
+          --account demo --thread fixture-NAME --width 420 --height 1100 --screenshot before-420.png
+    validations:
+      required: true
+  - type: textarea
+    id: before
+    attributes:
+      label: Before screenshots
+      description: Images from the agent repro (bin/evidence uploads them). Write "not visual" for logic bugs.
+  - type: input
+    id: version
+    attributes:
+      label: Commit
+      description: Output of `git rev-parse --short HEAD`.

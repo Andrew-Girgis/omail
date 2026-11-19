@@ -1,0 +1,38 @@
+#!/bin/sh
+# Upload screenshots to the qa-evidence branch and print Markdown image links.
+# Usage: bin/evidence ISSUE FILE...   (files land in issue-ISSUE/ under their own names)
+# The repository is public: only screenshots of --demo runs with synthetic fixtures.
+set -eu
+[ $# -ge 2 ] || { echo "Usage: bin/evidence ISSUE FILE..." >&2; exit 1; }
+issue=$1
+shift
+ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
+repo=$(gh repo view --json nameWithOwner -q .nameWithOwner)
+work=$(mktemp -d)
+branch="evidence-$$"
+cleanup() {
+    git -C "$ROOT" worktree remove --force "$work" 2>/dev/null || true
+    git -C "$ROOT" branch -D "$branch" >/dev/null 2>&1 || true
+}
+trap cleanup EXIT
+if git -C "$ROOT" ls-remote --exit-code --heads origin qa-evidence >/dev/null 2>&1; then
+    git -C "$ROOT" fetch -q origin qa-evidence
+    git -C "$ROOT" worktree add -q -b "$branch" "$work" FETCH_HEAD
+else
+    git -C "$ROOT" worktree add -q --detach "$work"
+    git -C "$work" switch -q --orphan "$branch"
+fi
+mkdir -p "$work/issue-$issue"
+for file in "$@"; do
+    case "$file" in
+    *.png | *.jpg | *.gif) cp "$file" "$work/issue-$issue/" ;;
+    *) echo "Not an image: $file" >&2; exit 1 ;;
+    esac
+done
+git -C "$work" add "issue-$issue"
+git -C "$work" commit -q -m "Evidence for #$issue"
+git -C "$work" push -q origin "HEAD:qa-evidence"
+for file in "$@"; do
+    name=$(basename "$file")
+    echo "![$name](https://raw.githubusercontent.com/$repo/qa-evidence/issue-$issue/$name)"
+done
