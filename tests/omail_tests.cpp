@@ -18,6 +18,8 @@
 #include <QQuickWindow>
 #include <QScopeGuard>
 #include <QTemporaryDir>
+#include <QTextBlock>
+#include <QTextDocument>
 #include <QUrlQuery>
 #include <QtTest>
 
@@ -95,6 +97,22 @@ class OmailTests : public QObject {
                 {"topic", "Planning"}};
     }
   private slots:
+    static QString fixture(const QString &name) {
+        QFile file(QFINDTESTDATA("fixtures/mail/" + name + ".html"));
+        return file.open(QIODevice::ReadOnly) ? QString::fromUtf8(file.readAll()) : QString();
+    }
+    // Renders Markdown the way the simplified view does; returns link targets and visible text.
+    static QPair<QStringList, QString> rendered(const QString &markdown) {
+        QTextDocument document;
+        document.setMarkdown(markdown, QTextDocument::MarkdownDialectGitHub);
+        QStringList links;
+        for (auto block = document.begin(); block.isValid(); block = block.next())
+            for (auto it = block.begin(); !it.atEnd(); ++it)
+                if (it.fragment().charFormat().isAnchor())
+                    links << it.fragment().charFormat().anchorHref();
+        links.removeDuplicates();
+        return {links, document.toPlainText()};
+    }
     void initTestCase() {
         QQuickStyle::setStyle("Material");
         qmlRegisterType<MailDocument>("Omail", 1, 0, "MailDocument");
@@ -115,6 +133,43 @@ class OmailTests : public QObject {
         QCOMPARE(row["subject"].toString(), QString("New"));
         QCOMPARE(row["count"].toInt(), 2);
         QCOMPARE(row["unread"].toInt(), 1);
+    }
+    void simplifiedViewKeepsStructureAndLinks() {
+        // Issue #10: headings, bullets, and links survive; layout tables do not become pipes.
+        const auto newsletter = MailCodec::markdown(fixture("newsletter-fixed-width"));
+        QVERIFY2(!newsletter.contains('|'), qPrintable(newsletter));
+        QVERIFY2(newsletter.contains(QRegularExpression("^# This week in quiet software$",
+                                                        QRegularExpression::MultilineOption)),
+                 qPrintable(newsletter));
+        QVERIFY(newsletter.contains(QRegularExpression("^- Why the slowest feature is often",
+                                                       QRegularExpression::MultilineOption)));
+        QVERIFY(
+            rendered(newsletter).first.contains("https://northwind.example/stories/slow-features"));
+
+        const auto statement = MailCodec::markdown(fixture("account-statement"));
+        QVERIFY2(!statement.contains("|-"), qPrintable(statement));
+        // A label/value row stays on one line.
+        QVERIFY2(rendered(statement).second.contains(QRegularExpression(
+                     "^Amount due:\\s+\\$84\\.20", QRegularExpression::MultilineOption)),
+                 qPrintable(rendered(statement).second));
+        const auto statementLinks = rendered(statement).first;
+        for (const QString path : {"/account", "/help", "/outages", "/contact", "/privacy"})
+            QVERIFY2(statementLinks.contains("https://harbour.example" + path),
+                     qPrintable(statementLinks.join(' ')));
+    }
+    void simplifiedViewLinksWrittenAddresses() {
+        // Issue #10: written-out addresses are clickable, without trailing punctuation.
+        const auto notice = rendered(MailCodec::markdown(fixture("security-notice"))).first;
+        QVERIFY2(notice.contains("https://codehost.example/settings/security-log") &&
+                     notice.contains("https://codehost.example/contact") &&
+                     notice.contains(
+                         "https://codehost.example/settings/connections/applications/5a7e3c19"),
+                 qPrintable(notice.join(' ')));
+        // Plain-text mail: Markdown characters stay literal, the address becomes a link.
+        const auto plain = rendered(MailCodec::markdown(
+            {}, "Price *today* only. #1 pick: https://example.test/a_b_c.\nThanks"));
+        QVERIFY2(plain.second.contains("Price *today* only. #1 pick:"), qPrintable(plain.second));
+        QCOMPARE(plain.first, QStringList{"https://example.test/a_b_c"});
     }
     void mailTextDropsImagePlaceholdersAndPreviewPadding() {
         const auto text = MailCodec::plainText(QString::fromUtf8(

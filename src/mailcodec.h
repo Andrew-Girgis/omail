@@ -5,6 +5,8 @@
 
 namespace MailCodec {
 QString plainText(const QString &html);
+// The simplified view: Markdown for an HTML body, or for plain text when html is empty.
+QString markdown(const QString &html, const QString &text = {});
 QString cleanText(QString text);
 QString utc(const QString &date, const QString &zone = {});
 QJsonObject googleMessage(const QJsonObject &raw, const QString &account);

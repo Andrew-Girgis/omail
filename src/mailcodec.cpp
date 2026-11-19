@@ -5,6 +5,7 @@
 #include <QLocale>
 #include <QObject>
 #include <QRegularExpression>
+#include <QTextDocument>
 #include <QTextDocumentFragment>
 #include <QTimeZone>
 #include <QUrl>
@@ -74,6 +75,15 @@ QString MailCodec::plainText(const QString &html) {
         .remove(lineEdges)
         .replace(blankLines, "\n\n")
         .trimmed();
+}
+QString MailCodec::markdown(const QString &html, const QString &text) {
+    // Baseline: Qt's own writer. Issue #10 replaces it.
+    QTextDocument document;
+    if (html.isEmpty())
+        document.setPlainText(text);
+    else
+        document.setHtml(html);
+    return document.toMarkdown();
 }
 QString MailCodec::utc(const QString &date, const QString &zone) {
     QDateTime time = QDateTime::fromString(date, Qt::ISODateWithMs);
