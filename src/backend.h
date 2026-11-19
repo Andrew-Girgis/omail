@@ -1,4 +1,5 @@
 #pragma once
+#include "clock.h"
 #include "ai.h"
 #include "config.h"
 #include "oauth.h"
@@ -35,6 +36,8 @@ class Backend : public QObject {
     static inline const QString WindowService = "app.omail.Omail";
     static inline const QString WindowPath = "/app/omail/Omail";
     bool startService();
+    // QML reads "now" through the app clock so pinned repro runs agree with the backend.
+    Q_INVOKABLE QDateTime currentTime() const { return Clock::nowUtc(); }
     Q_INVOKABLE void refresh();
     Q_INVOKABLE void clearError();
     Q_INVOKABLE void selectProfile(const QString &profile);
@@ -118,7 +121,7 @@ class Backend : public QObject {
     QVariantMap m_data;
     QString m_profile = "personal", m_folder = "inbox", m_search, m_account, m_thread;
     QString m_status, m_error, m_summary;
-    QDate m_anchor = QDate::currentDate();
+    QDate m_anchor = Clock::today();
     bool m_demo = false, m_busy = false, m_aiBusy = false, m_classifying = false;
     QTimer m_poll, m_syncTimer, m_scheduler, m_classifier;
     qint64 m_version = -1;

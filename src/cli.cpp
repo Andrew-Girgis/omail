@@ -1,3 +1,4 @@
+#include "clock.h"
 #include "cli.h"
 #include "config.h"
 #include "store.h"
@@ -155,8 +156,7 @@ int runCli(QStringList args) {
                 d = QDateTime(QDate::fromString(s, Qt::ISODate), QTime(0, 0));
             return d;
         };
-        const auto start = parse(from, QDateTime::currentDateTimeUtc()),
-                   end = parse(to, start.addDays(30));
+        const auto start = parse(from, Clock::nowUtc()), end = parse(to, start.addDays(30));
         if (!start.isValid() || !end.isValid() || end <= start)
             return error("Use valid ISO dates with --to after --from.");
         return output(store.events(profile, start.toUTC().toString(Qt::ISODateWithMs),

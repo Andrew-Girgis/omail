@@ -1,3 +1,4 @@
+#include "clock.h"
 #include "mailcodec.h"
 #include <QDateTime>
 #include <QJsonDocument>
@@ -337,9 +338,7 @@ QByteArray MailCodec::mime(const QJsonObject &draft) {
     bytes += "Subject: =?UTF-8?B?" + draft["subject"].toString().toUtf8().toBase64() + "?=\r\n";
     bytes += "Message-ID: <" + draft["id"].toString().toUtf8() + "@omail.local>\r\n";
     bytes += "Date: " +
-             QLocale::c()
-                 .toString(QDateTime::currentDateTimeUtc(), "ddd, dd MMM yyyy HH:mm:ss +0000")
-                 .toLatin1() +
+             QLocale::c().toString(Clock::nowUtc(), "ddd, dd MMM yyyy HH:mm:ss +0000").toLatin1() +
              "\r\n";
     if (draft["mode"] == "reply" && !draft["internet_id"].toString().isEmpty())
         bytes += "In-Reply-To: " + draft["internet_id"].toString().toUtf8() +

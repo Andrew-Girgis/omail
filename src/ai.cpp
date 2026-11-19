@@ -1,3 +1,4 @@
+#include "clock.h"
 #include "ai.h"
 #include <QJsonDocument>
 #include <QRegularExpression>
@@ -195,7 +196,7 @@ void Ai::ask(const QString &profile, const QString &question, AiCallback done) {
         return;
     }
     const auto mail = m_store->sources(profile, question, 10);
-    const auto now = QDateTime::currentDateTimeUtc();
+    const auto now = Clock::nowUtc();
     const auto events = m_store->events(profile, now.addDays(-30).toString(Qt::ISODateWithMs),
                                         now.addDays(90).toString(Qt::ISODateWithMs));
     QJsonArray evidence, sourceLinks;

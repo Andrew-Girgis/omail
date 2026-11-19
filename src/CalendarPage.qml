@@ -114,7 +114,7 @@ Item {
                             Layout.preferredWidth: 100
                             Layout.preferredHeight: page.mode === "week" ? 1160 : Math.max(90, (calendarScroll.height - 12) / 6)
                             color: theme.panel
-                            border.width: Qt.formatDate(new Date(), "yyyy-MM-dd") === modelData ? 1 : 0
+                            border.width: Qt.formatDate(backend.currentTime(), "yyyy-MM-dd") === modelData ? 1 : 0
                             border.color: Qt.alpha(theme.accent, .5)
                             OLabel {
                                 id: dayLabel
@@ -124,7 +124,7 @@ Item {
                                 text: window.dateText(modelData + "T12:00:00", page.mode === "week" ? "ddd d" : "d")
                                 font.pixelSize: 12
                                 font.weight: Font.DemiBold
-                                color: Qt.formatDate(new Date(), "yyyy-MM-dd") === modelData ? theme.accent : theme.muted
+                                color: Qt.formatDate(backend.currentTime(), "yyyy-MM-dd") === modelData ? theme.accent : theme.muted
                             }
                             TapHandler {
                                 onDoubleTapped: backend.newEvent(dayCell.modelData)

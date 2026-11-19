@@ -1,5 +1,6 @@
 #include "backend.h"
 #include "cli.h"
+#include "clock.h"
 #include "maildocument.h"
 #include "theme.h"
 #include "translator.h"
@@ -25,6 +26,20 @@ int main(int argc, char **argv) {
     const bool demo = arguments.contains("--demo"), capture = arguments.contains("--screenshot");
     const bool service = !arguments.isEmpty() && arguments.first() == "service";
     const bool gui = arguments.isEmpty() || arguments.first() == "open" || demo || capture;
+    if (qEnvironmentVariableIsSet("OMAIL_NOW")) {
+        // A pinned clock is for repro runs only; real accounts must never see a fake time.
+        const auto start = QDateTime::fromString(qEnvironmentVariable("OMAIL_NOW"), Qt::ISODate);
+        if (!start.isValid()) {
+            QTextStream(stderr) << "OMAIL_NOW must be an ISO 8601 time, such as "
+                                   "2026-01-15T09:00:00Z.\n";
+            return 1;
+        }
+        if (!demo && !qEnvironmentVariableIsSet("OMAIL_DATA_DIR")) {
+            QTextStream(stderr) << "OMAIL_NOW needs --demo or OMAIL_DATA_DIR.\n";
+            return 1;
+        }
+        Clock::pin(start);
+    }
     if (!gui || capture) {
         qputenv("QT_QPA_PLATFORM", "offscreen");
         qputenv("QT_QPA_PLATFORMTHEME", "generic");

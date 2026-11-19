@@ -1,4 +1,5 @@
 #include "ai.h"
+#include "clock.h"
 #include "backend.h"
 #include "config.h"
 #include "mailcodec.h"
@@ -15,6 +16,7 @@
 #include <QQmlContext>
 #include <QQuickStyle>
 #include <QQuickWindow>
+#include <QScopeGuard>
 #include <QTemporaryDir>
 #include <QUrlQuery>
 #include <QtTest>
@@ -732,6 +734,28 @@ class OmailTests : public QObject {
         QCOMPARE(listPreset->property("currentText").toString(), QString("Mellem"));
         QVERIFY(capture(window, "appearance-da"));
         QVERIFY2(warnings.isEmpty(), qPrintable(warnings.join('\n')));
+    }
+    void pinnedClockMakesDemoDataRepeatable() {
+        const QDateTime start(QDate(2026, 1, 15), QTime(9, 0, 30), QTimeZone::utc());
+        Clock::pin(start);
+        const auto unpin = qScopeGuard([] { Clock::unpin(); });
+        // A pinned clock keeps running from its start, so timers and the scheduler still work.
+        QVERIFY(Clock::nowUtc() >= start && Clock::nowUtc() < start.addSecs(5));
+        QCOMPARE(Clock::today(), start.toLocalTime().date());
+        QTemporaryDir dir;
+        Store store(dir.path());
+        QVERIFY2(store.good(), qPrintable(store.error()));
+        store.seedDemo();
+        auto received = [&store](const QString &id) {
+            return store.one("SELECT received FROM messages WHERE id=?", {id})["received"]
+                .toString();
+        };
+        QCOMPARE(received("demo:0"), QString("2026-01-15T09:00:00.000Z"));
+        QCOMPARE(received("demo:1"), QString("2026-01-15T07:50:00.000Z"));
+        const auto tomorrow =
+            QDateTime(start.toLocalTime().date().addDays(1), QTime(10, 0)).toUTC();
+        QCOMPARE(store.one("SELECT start FROM events WHERE id='demo:event'")["start"].toString(),
+                 tomorrow.toString(Qt::ISODateWithMs));
     }
     void profileSearchIsIsolated() {
         QTemporaryDir dir;

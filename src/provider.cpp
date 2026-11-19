@@ -1,3 +1,4 @@
+#include "clock.h"
 #include "provider.h"
 #include "mailcodec.h"
 #include "oauth.h"
@@ -149,9 +150,8 @@ void Provider::syncMail(const QJsonObject &account, Done done, const QString &se
         return;
     }
     m_syncing.insert(accountId);
-    const QString cutoff = QDateTime::currentDateTimeUtc()
-                               .addDays(-m_config->get("cacheDays").toInt())
-                               .toString(Qt::ISODateWithMs);
+    const QString cutoff =
+        Clock::nowUtc().addDays(-m_config->get("cacheDays").toInt()).toString(Qt::ISODateWithMs);
     auto seen = std::make_shared<QSet<QString>>();
     auto finish = [this, accountId, done, lock, seen, cutoff, search](const QString &error) {
         m_syncing.remove(accountId);
@@ -161,10 +161,10 @@ void Provider::syncMail(const QJsonObject &account, Done done, const QString &se
                         ->one("SELECT last_sync FROM accounts WHERE id=?", {accountId})["last_sync"]
                         .toString()
                         .isEmpty())
-                    m_store->exec("UPDATE messages SET classified=-1 WHERE account_id=? AND "
-                                  "classified=0 AND received<?",
-                                  {accountId, QDateTime::currentDateTimeUtc().addDays(-1).toString(
-                                                  Qt::ISODateWithMs)});
+                    m_store->exec(
+                        "UPDATE messages SET classified=-1 WHERE account_id=? AND "
+                        "classified=0 AND received<?",
+                        {accountId, Clock::nowUtc().addDays(-1).toString(Qt::ISODateWithMs)});
                 const auto cached =
                     m_store->query("SELECT id FROM messages WHERE account_id=? AND received>=?",
                                    {accountId, cutoff});
@@ -180,19 +180,18 @@ void Provider::syncMail(const QJsonObject &account, Done done, const QString &se
                               "d.thread_id=messages.thread_id AND "
                               "d.through_date>=messages.received)) AND id NOT IN (SELECT id FROM "
                               "retained_messages WHERE until_date>?)",
-                              {accountId, cutoff,
-                               QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)});
+                              {accountId, cutoff, Clock::nowUtc().toString(Qt::ISODateWithMs)});
             } else {
                 for (const auto &id : *seen)
                     m_store->exec("INSERT OR REPLACE INTO "
                                   "retained_messages(id,until_date) VALUES(?,?)",
-                                  {id, QDateTime::currentDateTimeUtc()
+                                  {id, Clock::nowUtc()
                                            .addDays(m_config->get("cacheDays").toInt())
                                            .toString(Qt::ISODateWithMs)});
             }
             m_store->exec("UPDATE accounts SET status='Connected',last_sync=?,sync_error='' "
                           "WHERE id=?",
-                          {QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs), accountId});
+                          {Clock::nowUtc().toString(Qt::ISODateWithMs), accountId});
         } else
             m_store->exec("UPDATE accounts SET status='Needs attention',sync_error=? "
                           "WHERE id=?",

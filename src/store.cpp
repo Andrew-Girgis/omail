@@ -1,3 +1,4 @@
+#include "clock.h"
 #include "store.h"
 #include <QCryptographicHash>
 #include <QDir>
@@ -239,8 +240,7 @@ bool Store::upsertMessage(const QJsonObject &m) {
         one("SELECT last_sync FROM accounts WHERE id=?", {m["account_id"].toString()})["last_sync"]
             .toString()
             .isEmpty() &&
-        m["received"].toString() <
-            QDateTime::currentDateTimeUtc().addDays(-1).toString(Qt::ISODateWithMs);
+        m["received"].toString() < Clock::nowUtc().addDays(-1).toString(Qt::ISODateWithMs);
     args << (oldInitial ? -1 : 0);
     return exec("INSERT INTO messages(" + fields.join(',') + ",classified) VALUES(" +
                     marks.join(',') + ",?) ON CONFLICT(id) DO UPDATE SET " + updates.join(',') +
@@ -436,10 +436,10 @@ bool Store::saveDraft(QJsonObject draft) {
                 "excluded.updated_at WHERE drafts.status IN ('draft','held','scheduled')",
                 {id, draft["account_id"].toString(),
                  QString::fromUtf8(QJsonDocument(draft).toJson(QJsonDocument::Compact)),
-                 QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)});
+                 Clock::nowUtc().toString(Qt::ISODateWithMs)});
 }
 bool Store::queueDraft(const QString &id, const QDateTime &when) {
-    if (!when.isValid() || when <= QDateTime::currentDateTimeUtc())
+    if (!when.isValid() || when <= Clock::nowUtc())
         return false;
     if (one("SELECT id FROM drafts WHERE id=? AND status IN "
             "('draft','held','scheduled')",
@@ -504,7 +504,9 @@ void Store::seedDemo() {
                  {"email", "alex@example.test"},
                  {"profile_id", "personal"},
                  {"name", "Alex"}});
-    const auto now = QDateTime::currentDateTimeUtc();
+    // Whole minutes, so a pinned clock seeds identical rows on every run.
+    auto now = Clock::nowUtc();
+    now.setTime(QTime(now.time().hour(), now.time().minute()));
     const QStringList subjects{"A few details before Friday", "Your workspace is ready",
                                "Notes from the design review", "Your monthly reading list",
                                "Weekend plans"};
@@ -547,7 +549,7 @@ void Store::seedDemo() {
     }
     exec("INSERT INTO calendars(id,remote_id,account_id,name,color) "
          "VALUES('demo:calendar','primary','demo','Personal','#516dff')");
-    const auto date = QDateTime(QDate::currentDate().addDays(1), QTime(10, 0)).toUTC();
+    const auto date = QDateTime(Clock::today().addDays(1), QTime(10, 0)).toUTC();
     upsertEvent({{"id", "demo:event"},
                  {"remote_id", "event"},
                  {"calendar_id", "demo:calendar"},

@@ -194,7 +194,7 @@ Dialog {
                 id: sendTime
                 Layout.fillWidth: true
                 placeholderText: qsTr("YYYY-MM-DDTHH:MM")
-                text: Qt.formatDateTime(new Date(Date.now() + 3600000), "yyyy-MM-ddTHH:mm")
+                text: Qt.formatDateTime(new Date(backend.currentTime().getTime() + 3600000), "yyyy-MM-ddTHH:mm")
             }
             OButton {
                 text: qsTr("Approve scheduled send")

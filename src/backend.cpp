@@ -23,7 +23,7 @@ namespace {
 QString json(const QJsonArray &o) {
     return QString::fromUtf8(QJsonDocument(o).toJson(QJsonDocument::Compact));
 }
-QString now() { return QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs); }
+QString now() { return Clock::nowUtc().toString(Qt::ISODateWithMs); }
 QString lockPath(const Store &s, const QString &id) {
     return s.directory() + "/send-" +
            QString::fromLatin1(
@@ -358,7 +358,7 @@ void Backend::sync() {
             complete(errors->join('\n'), tr("Up to date"));
         }
     };
-    const auto today = QDateTime::currentDateTimeUtc();
+    const auto today = Clock::nowUtc();
     for (const auto &a : accounts) {
         m_provider.syncMail(a.toObject(), finish);
         m_provider.syncCalendar(a.toObject(), today.addDays(-90), today.addDays(365), finish);
@@ -886,7 +886,7 @@ void Backend::calendarNavigate(int n) {
     refresh();
 }
 void Backend::calendarToday() {
-    m_anchor = QDate::currentDate();
+    m_anchor = Clock::today();
     refresh();
 }
 void Backend::calendarDate(const QString &date) {
@@ -1032,7 +1032,7 @@ bool Backend::startService() {
     return true;
 }
 void Backend::schedulerTick() {
-    const auto current = QDateTime::currentDateTimeUtc();
+    const auto current = Clock::nowUtc();
     const auto network = QNetworkInformation::instance();
     const bool online =
         network && network->reachability() == QNetworkInformation::Reachability::Online;
@@ -1048,8 +1048,7 @@ void Backend::prepareForSleep(bool) {
     m_onlineInterval = false;
 }
 void Backend::classifyNext() {
-    if (m_classifying || !m_config.get("aiEnabled").toBool() ||
-        m_retryAi > QDateTime::currentDateTimeUtc())
+    if (m_classifying || !m_config.get("aiEnabled").toBool() || m_retryAi > Clock::nowUtc())
         return;
     const auto message =
         m_store.one("SELECT m.* FROM messages m JOIN accounts a ON a.id=m.account_id WHERE "
@@ -1061,7 +1060,7 @@ void Backend::classifyNext() {
     m_ai.classify(message, [this, message](const QJsonObject &r, const QString &e) {
         m_classifying = false;
         if (!e.isEmpty()) {
-            m_retryAi = QDateTime::currentDateTimeUtc().addSecs(300);
+            m_retryAi = Clock::nowUtc().addSecs(300);
             m_store.exec("INSERT OR REPLACE INTO service_state(key,value) "
                          "VALUES('ai_error',?)",
                          {e});
