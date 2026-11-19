@@ -46,6 +46,8 @@ class Backend : public QObject {
     Q_INVOKABLE void search(const QString &term);
     Q_INVOKABLE void loadMore();
     Q_INVOKABLE void openThread(const QString &account, const QString &thread);
+    // Adds made-up messages to the demo inbox from DIR/*.json; returns an error or "".
+    QString loadFixtures(const QString &directory);
     Q_INVOKABLE void sync();
     Q_INVOKABLE void fetchOlder(const QString &account, const QString &query);
     Q_INVOKABLE bool setSetting(const QString &key, const QVariant &value);

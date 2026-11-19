@@ -1,0 +1,7 @@
+{
+    "subject": "This week in quiet software",
+    "sender": "Northwind Weekly",
+    "sender_email": "letters@northwind.example",
+    "minutes_ago": 20,
+    "html": "newsletter-fixed-width.html"
+}

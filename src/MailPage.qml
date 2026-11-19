@@ -515,7 +515,7 @@ Item {
                             ColumnLayout {
                                 id: messageCard
                                 required property var modelData
-                                property bool rich: false
+                                property bool rich: !!modelData.html && backend.settings.messageView !== "plain"
                                 Layout.fillWidth: true
                                 Layout.leftMargin: window.narrow ? 22 : 32
                                 Layout.rightMargin: window.narrow ? 22 : 32

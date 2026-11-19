@@ -1,0 +1,7 @@
+{
+    "subject": "A new app was connected to your account",
+    "sender": "Codehost",
+    "sender_email": "noreply@codehost.example",
+    "minutes_ago": 5,
+    "html": "security-notice.html"
+}

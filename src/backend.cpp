@@ -10,6 +10,7 @@
 #include <QDBusPendingCallWatcher>
 #include <QDBusPendingReply>
 #include <QDesktopServices>
+#include <QDir>
 #include <QFileInfo>
 #include <QJsonDocument>
 #include <QMimeDatabase>
@@ -171,6 +172,47 @@ void Backend::loadMore() {
         return;
     m_limit = qMin(m_limit + PageSize, 2000);
     refresh();
+}
+QString Backend::loadFixtures(const QString &directory) {
+    // Each fixture is NAME.json ({subject, sender, sender_email, minutes_ago, html}) with
+    // "html" naming a body file beside it. Thread ID is "fixture-NAME" in the demo account.
+    if (!m_demo)
+        return tr("Fixtures load only into the demo preview.");
+    const QDir dir(directory);
+    const auto files = dir.entryList({"*.json"}, QDir::Files, QDir::Name);
+    if (!dir.exists() || files.isEmpty())
+        return tr("No fixtures in %1.").arg(directory);
+    for (const auto &file : files) {
+        QFile meta(dir.filePath(file));
+        QJsonParseError parse;
+        const auto object = meta.open(QIODevice::ReadOnly)
+                                ? QJsonDocument::fromJson(meta.readAll(), &parse).object()
+                                : QJsonObject();
+        QFile body(dir.filePath(object["html"].toString()));
+        if (object.isEmpty() || object["html"].toString().isEmpty() ||
+            !body.open(QIODevice::ReadOnly))
+            return tr("Cannot read fixture %1.").arg(file);
+        const QString name = QFileInfo(file).completeBaseName(),
+                      html = QString::fromUtf8(body.readAll());
+        const auto received = Clock::nowUtc().addSecs(-60 * object["minutes_ago"].toInt());
+        if (!m_store.upsertMessage({{"id", "demo:fixture-" + name},
+                                    {"remote_id", "fixture-" + name},
+                                    {"account_id", "demo"},
+                                    {"thread_id", "fixture-" + name},
+                                    {"subject", object["subject"]},
+                                    {"sender", object["sender"]},
+                                    {"sender_email", object["sender_email"]},
+                                    {"recipients", "alex@example.test"},
+                                    {"body", MailCodec::plainText(html)},
+                                    {"html", html},
+                                    {"received", received.toString(Qt::ISODateWithMs)},
+                                    {"folder", "inbox"},
+                                    {"unread", 1},
+                                    {"attachments", "[]"}}))
+            return m_store.error();
+    }
+    refresh();
+    return {};
 }
 void Backend::openThread(const QString &account, const QString &thread) {
     const auto row = m_store.one("SELECT profile_id FROM accounts WHERE id=?", {account});

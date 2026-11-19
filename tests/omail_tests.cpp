@@ -770,6 +770,25 @@ class OmailTests : public QObject {
         QCOMPARE(results.first().toObject()["id"].toString(), QString("personal-mail"));
         QCOMPARE(store.conversations("work", "inbox").size(), 1);
     }
+    void fixturesLoadOnlyIntoTheDemo() {
+        const QString fixtures = QFINDTESTDATA("fixtures/mail");
+        QVERIFY(!fixtures.isEmpty());
+        QTemporaryDir dir;
+        {
+            Backend real(dir.path() + "/real", dir.path() + "/config");
+            QVERIFY(!real.loadFixtures(fixtures).isEmpty());
+        }
+        Backend demo(dir.path() + "/data", dir.path() + "/config", true);
+        QVERIFY(!demo.loadFixtures(dir.path() + "/missing").isEmpty());
+        QCOMPARE(demo.loadFixtures(fixtures), QString());
+        Store store(dir.path() + "/data");
+        const auto m =
+            store.one("SELECT * FROM messages WHERE thread_id=?", {"fixture-account-statement"});
+        QCOMPARE(m["account_id"].toString(), QString("demo"));
+        QCOMPARE(m["sender"].toString(), QString("Harbour Utilities"));
+        QVERIFY(m["html"].toString().contains("Statement details"));
+        QVERIFY(m["body"].toString().contains("$84.20"));
+    }
     void notificationTargetOpensItsConversationAndListPagesGrow() {
         QTemporaryDir dir;
         {
@@ -964,6 +983,9 @@ class OmailTests : public QObject {
         Config reloaded(dir.path());
         QCOMPARE(reloaded.get("fontSize").toInt(), 17);
         QVERIFY(!config.set("unknown", true, &error));
+        QCOMPARE(config.get("messageView").toString(), QString("formatted"));
+        QVERIFY(!config.set("messageView", "html", &error));
+        QVERIFY(config.set("messageView", "plain", &error));
     }
     void themesFollowAtomicReplacement() {
         QTemporaryDir dir;

@@ -72,6 +72,13 @@ int main(int argc, char **argv) {
             return 0;
     }
     Backend backend(data, config, demo);
+    if (const QString fixtures = take("--fixtures"); !fixtures.isEmpty()) {
+        const QString error = backend.loadFixtures(fixtures);
+        if (!error.isEmpty()) {
+            QTextStream(stderr) << error << "\n";
+            return 1;
+        }
+    }
     WindowService windowService(&backend);
     if (single)
         QDBusConnection::sessionBus().registerObject(Backend::WindowPath, &windowService,

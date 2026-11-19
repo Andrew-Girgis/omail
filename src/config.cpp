@@ -48,7 +48,8 @@ QJsonObject Config::defaults() {
             {"notifications", true},
             {"viewOrder", "inbox,priority,flagged,drafts,sent,archive,junk,trash,all"},
             {"showTopics", true},
-            {"calendarView", "week"}};
+            {"calendarView", "week"},
+            {"messageView", "formatted"}};
 }
 QJsonObject Config::schema() {
     QJsonObject result;
@@ -108,6 +109,8 @@ bool Config::validate(const QString &key, const QJsonValue &value, QString *erro
         return fail(tr("Choose comfortable or compact density."));
     if (key == "calendarView" && value != "week" && value != "month" && value != "agenda")
         return fail(tr("Choose week, month, or agenda."));
+    if (key == "messageView" && value != "formatted" && value != "plain")
+        return fail(tr("Choose formatted or plain."));
     if (key == "viewOrder") {
         const QStringList allowed{"inbox",   "priority", "flagged", "drafts", "sent",
                                   "archive", "junk",     "trash",   "all"};

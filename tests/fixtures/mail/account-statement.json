@@ -1,0 +1,7 @@
+{
+    "subject": "Your January statement is ready",
+    "sender": "Harbour Utilities",
+    "sender_email": "billing@harbour.example",
+    "minutes_ago": 45,
+    "html": "account-statement.html"
+}

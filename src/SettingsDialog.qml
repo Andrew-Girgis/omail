@@ -291,6 +291,18 @@ Dialog {
                     }
                     RowLayout {
                         OLabel {
+                            text: qsTr("Open messages as")
+                            Layout.fillWidth: true
+                        }
+                        OComboBox {
+                            objectName: "messageViewSetting"
+                            model: [qsTr("Formatted"), qsTr("Plain text")]
+                            currentIndex: backend.settings.messageView === "plain" ? 1 : 0
+                            onActivated: backend.setSetting("messageView", currentIndex ? "plain" : "formatted")
+                        }
+                    }
+                    RowLayout {
+                        OLabel {
                             text: qsTr("Sidebar width")
                             Layout.fillWidth: true
                         }
