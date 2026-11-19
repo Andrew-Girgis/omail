@@ -51,7 +51,8 @@ Item {
                             Layout.fillWidth: true
                         }
                         OLabel {
-                            text: page.draftView ? backend.data.drafts.length : backend.data.threads.length
+                            // The list loads in pages; show the folder total when there is one.
+                            text: page.draftView ? backend.data.drafts.length : Math.max(backend.data.search ? 0 : backend.data.counts[backend.data.folder] || 0, backend.data.threads.length).toLocaleString(Qt.locale(), "f", 0)
                             color: theme.muted
                             font.pixelSize: 12
                         }
@@ -93,7 +94,21 @@ Item {
                     Layout.fillHeight: true
                     Layout.fillWidth: true
                     clip: true
-                    model: backend.data.threads
+                    // Assigned by hand: rebinding a JS array model scrolls to the top, so keep
+                    // the position unless the view itself changed.
+                    readonly property var rows: backend.data.threads
+                    readonly property string viewKey: [backend.data.profile, backend.data.folder, backend.data.search].join("\u001f")
+                    property string shownKey: ""
+                    function showRows() {
+                        const y = viewKey === shownKey ? contentY : 0;
+                        shownKey = viewKey;
+                        model = rows;
+                        contentY = Math.max(0, Math.min(y, contentHeight - height));
+                    }
+                    onRowsChanged: showRows()
+                    Component.onCompleted: showRows()
+                    onContentYChanged: if (count > 0 && contentY + height > contentHeight - 600)
+                        Qt.callLater(backend.loadMore)
                     boundsBehavior: Flickable.StopAtBounds
                     ScrollBar.vertical: ScrollBar {}
                     delegate: ItemDelegate {
@@ -164,7 +179,7 @@ Item {
                             }
                             OLabel {
                                 visible: backend.settings.density !== "compact"
-                                text: modelData.body.replace(/\s+/g, " ")
+                                text: (modelData.preview || "").replace(/\s+/g, " ").trim()
                                 font.pixelSize: 12
                                 color: theme.muted
                                 Layout.fillWidth: true

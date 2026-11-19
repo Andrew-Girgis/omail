@@ -3,6 +3,9 @@
 #include "maildocument.h"
 #include "theme.h"
 #include "translator.h"
+#include "windowservice.h"
+#include <QDBusConnection>
+#include <QDBusMessage>
 #include <QFileInfo>
 #include <QGuiApplication>
 #include <QProcess>
@@ -40,7 +43,24 @@ int main(int argc, char **argv) {
     QTemporaryDir demoDirectory;
     const QString data = demo ? demoDirectory.path() + "/data" : Config::dataDirectory();
     const QString config = demo ? demoDirectory.path() + "/config" : Config::configDirectory();
+    // Isolated data directories (development, tests) never hand off to the real window.
+    const bool single =
+        !service && !demo && !capture && !qEnvironmentVariableIsSet("OMAIL_DATA_DIR");
+    const QString openAccount = take("--account"), openThread = take("--thread");
+    if (single && !QDBusConnection::sessionBus().registerService(Backend::WindowService)) {
+        // A window is already open: bring it forward instead of starting a second one.
+        const auto reply = QDBusConnection::sessionBus().call(
+            QDBusMessage::createMethodCall(Backend::WindowService, Backend::WindowPath,
+                                           Backend::WindowService, "Show")
+            << openAccount << openThread);
+        if (reply.type() == QDBusMessage::ReplyMessage)
+            return 0;
+    }
     Backend backend(data, config, demo);
+    WindowService windowService(&backend);
+    if (single)
+        QDBusConnection::sessionBus().registerObject(Backend::WindowPath, &windowService,
+                                                     QDBusConnection::ExportScriptableSlots);
     if (service) {
         if (!backend.startService())
             return 0;
@@ -67,6 +87,9 @@ int main(int argc, char **argv) {
     engine.load(QUrl("qrc:/Main.qml"));
     if (engine.rootObjects().isEmpty())
         return 1;
+    windowService.setWindow(qobject_cast<QWindow *>(engine.rootObjects().first()));
+    if (!openAccount.isEmpty())
+        backend.openThread(openAccount, openThread);
     if (!take("--tab").isEmpty())
         engine.rootObjects().first()->setProperty("tab", take("--tab"));
     if (capture) {

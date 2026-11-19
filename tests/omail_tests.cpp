@@ -114,6 +114,63 @@ class OmailTests : public QObject {
         QCOMPARE(row["count"].toInt(), 2);
         QCOMPARE(row["unread"].toInt(), 1);
     }
+    void mailTextDropsImagePlaceholdersAndPreviewPadding() {
+        const auto text = MailCodec::plainText(QString::fromUtf8(
+            "<div>Sale ends today͏ ‌ ͏ ‌ ­</div><img src='x.png'>"
+            "<p>Read <b>this</b>​</p><p></p><p></p><p>Bye</p>"));
+        for (const int c : {0xFFFC, 0x034F, 0x200C, 0x00AD, 0x200B})
+            QVERIFY2(!text.contains(QChar(c)), qPrintable(QString::number(c, 16)));
+        QVERIFY(text.startsWith("Sale ends"));
+        QVERIFY(text.contains("Read this"));
+        QVERIFY(!text.contains("\n\n\n"));
+        // A non-joiner between letters is real text, as in Persian.
+        const auto persian = QString::fromUtf8("می‌خواهم");
+        QCOMPARE(MailCodec::cleanText(persian), persian);
+    }
+    void cachedBodiesAreCleanedOnceAndListsCarryOnlyPreviews() {
+        QTemporaryDir dir;
+        {
+            Store store(dir.path());
+            account(store);
+            auto m = message("m");
+            m["body"] = QString::fromUtf8("Hello ￼͏ ‌ world ") + QString(500, 'x');
+            QVERIFY(store.upsertMessage(m));
+            QVERIFY(store.exec("PRAGMA user_version=0"));
+        }
+        Store store(dir.path());
+        const auto body = store.one("SELECT body FROM messages")["body"].toString();
+        QVERIFY(body.simplified().startsWith("Hello world x"));
+        QVERIFY(!body.contains(QChar(0xFFFC)) && !body.contains(QChar(0x200C)));
+        const auto row = store.conversations("personal", "inbox").first().toObject();
+        QVERIFY(!row.contains("body") && !row.contains("html"));
+        QCOMPARE(row["preview"].toString().size(), 300);
+    }
+    void folderCountsMatchConversationLists() {
+        QTemporaryDir dir;
+        Store store(dir.path());
+        account(store);
+        account(store, "w", "work");
+        QVERIFY(store.upsertMessage(message("one")));
+        QVERIFY(store.upsertMessage(message("two", "a", 5)));
+        auto other = message("three");
+        other["thread_id"] = "other";
+        other["flagged"] = 1;
+        QVERIFY(store.upsertMessage(other));
+        auto sent = message("four");
+        sent["folder"] = "sent";
+        QVERIFY(store.upsertMessage(sent));
+        QVERIFY(store.upsertMessage(message("five", "w")));
+        QVERIFY(store.applyClassification("two", classification()));
+        for (const QString &profile : {"personal", "work", "all"}) {
+            const auto counts = store.counts(profile);
+            for (const QString &folder :
+                 {"inbox", "priority", "flagged", "sent", "archive", "junk", "trash"})
+                QCOMPARE(counts[folder].toInt(), store.conversations(profile, folder).size());
+        }
+        QCOMPARE(store.counts("personal")["inbox"].toInt(), 2);
+        QVERIFY(store.dismissThread("a", "thread"));
+        QCOMPARE(store.counts("personal")["priority"].toInt(), 0);
+    }
     void microsoftPaginationAndRefreshTokenAreHandled() {
         QTemporaryDir dir;
         Store store(dir.path());
@@ -688,6 +745,36 @@ class OmailTests : public QObject {
         QCOMPARE(results.size(), 1);
         QCOMPARE(results.first().toObject()["id"].toString(), QString("personal-mail"));
         QCOMPARE(store.conversations("work", "inbox").size(), 1);
+    }
+    void notificationTargetOpensItsConversationAndListPagesGrow() {
+        QTemporaryDir dir;
+        {
+            Store store(dir.path() + "/data");
+            account(store);
+            account(store, "w", "work");
+            for (int i = 0; i < Backend::PageSize + 5; ++i) {
+                auto m = message("m" + QString::number(i), "a", -i);
+                m["thread_id"] = "t" + QString::number(i);
+                QVERIFY(store.upsertMessage(m));
+            }
+            auto work = message("work-mail", "w");
+            work["thread_id"] = "work-thread";
+            QVERIFY(store.upsertMessage(work));
+        }
+        Backend backend(dir.path() + "/data", dir.path() + "/config");
+        QCOMPARE(backend.data()["threads"].toList().size(), Backend::PageSize);
+        QCOMPARE(backend.data()["counts"].toMap()["inbox"].toInt(), Backend::PageSize + 5);
+        backend.loadMore();
+        QCOMPARE(backend.data()["threads"].toList().size(), Backend::PageSize + 5);
+        QSignalSpy opened(&backend, &Backend::sourceOpened);
+        backend.openThread("w", "work-thread");
+        QCOMPARE(opened.size(), 1);
+        QCOMPARE(backend.data()["profile"].toString(), QString("work"));
+        QCOMPARE(backend.data()["selectedThread"].toString(), QString("work-thread"));
+        QCOMPARE(backend.data()["messages"].toList().size(), 1);
+        QSignalSpy changed(&backend, &Backend::changed);
+        backend.refresh();
+        QCOMPARE(changed.size(), 0);
     }
     void cliRejectsWritesAndLeavesMailUntouched() {
         QTemporaryDir dir;

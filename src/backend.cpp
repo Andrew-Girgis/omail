@@ -1,10 +1,14 @@
 #include "backend.h"
 #include "mailcodec.h"
 #include <QColor>
+#include <QCoreApplication>
 #include <QCryptographicHash>
 #include <QDBusConnection>
+#include <QDBusConnectionInterface>
 #include <QDBusMessage>
 #include <QDBusPendingCall>
+#include <QDBusPendingCallWatcher>
+#include <QDBusPendingReply>
 #include <QDesktopServices>
 #include <QFileInfo>
 #include <QJsonDocument>
@@ -95,15 +99,13 @@ void Backend::refresh() {
     d["accounts"] = m_store.accounts();
     d["profile"] = m_profile;
     d["folder"] = m_folder;
-    d["threads"] = m_store.conversations(m_profile, m_folder, m_search);
+    d["search"] = m_search;
+    d["threads"] = m_store.conversations(m_profile, m_folder, m_search, m_limit);
+    d["threadLimit"] = m_limit;
     d["messages"] = m_store.thread(m_account, m_thread);
     d["selectedAccount"] = m_account;
     d["selectedThread"] = m_thread;
-    QJsonObject counts;
-    for (const QString &folder :
-         QStringList{"inbox", "priority", "flagged", "sent", "archive", "junk", "trash"})
-        counts[folder] = m_store.conversations(m_profile, folder, {}, 2000).size();
-    d["counts"] = counts;
+    d["counts"] = m_store.counts(m_profile);
     const bool all = m_profile == "all";
     const auto args = all ? QVariantList{} : QVariantList{m_profile};
     d["topics"] = m_store.query("SELECT DISTINCT m.topic FROM messages m JOIN accounts a ON "
@@ -156,12 +158,38 @@ void Backend::refresh() {
                     args)["n"];
     d["aiError"] =
         m_store.one("SELECT value FROM service_state WHERE key='ai_error'")["value"].toString();
-    m_data = d.toVariantMap();
+    auto data = d.toVariantMap();
+    // The daemon writes often while syncing. Rebuilding QML lists for identical data is
+    // what made the window lag and jump, so only publish real changes.
+    if (data == m_data)
+        return;
+    m_data = std::move(data);
     emit changed();
+}
+void Backend::loadMore() {
+    if (m_data["threads"].toList().size() < m_limit || m_limit >= 2000)
+        return;
+    m_limit = qMin(m_limit + PageSize, 2000);
+    refresh();
+}
+void Backend::openThread(const QString &account, const QString &thread) {
+    const auto row = m_store.one("SELECT profile_id FROM accounts WHERE id=?", {account});
+    if (row.isEmpty())
+        return;
+    m_profile = row["profile_id"].toString();
+    m_folder = "inbox";
+    m_limit = PageSize;
+    m_account = account;
+    m_thread = thread;
+    m_summary.clear();
+    refresh();
+    emit statusChanged();
+    emit sourceOpened("mail");
 }
 void Backend::selectProfile(const QString &profile) {
     if (profile != "all" && m_store.one("SELECT id FROM profiles WHERE id=?", {profile}).isEmpty())
         return;
+    m_limit = PageSize;
     m_profile = profile;
     m_account.clear();
     m_thread.clear();
@@ -170,6 +198,7 @@ void Backend::selectProfile(const QString &profile) {
     emit statusChanged();
 }
 void Backend::selectFolder(const QString &folder) {
+    m_limit = PageSize;
     m_folder = folder;
     m_account.clear();
     m_thread.clear();
@@ -185,6 +214,7 @@ void Backend::selectThread(const QString &account, const QString &thread) {
     emit statusChanged();
 }
 void Backend::search(const QString &term) {
+    m_limit = PageSize;
     m_search = term;
     refresh();
 }
@@ -984,6 +1014,13 @@ bool Backend::startService() {
     QDBusConnection::systemBus().connect("org.freedesktop.login1", "/org/freedesktop/login1",
                                          "org.freedesktop.login1.Manager", "PrepareForSleep", this,
                                          SLOT(prepareForSleep(bool)));
+    auto bus = QDBusConnection::sessionBus();
+    bus.connect("org.freedesktop.Notifications", "/org/freedesktop/Notifications",
+                "org.freedesktop.Notifications", "ActionInvoked", this,
+                SLOT(notificationAction(uint, QString)));
+    bus.connect("org.freedesktop.Notifications", "/org/freedesktop/Notifications",
+                "org.freedesktop.Notifications", "NotificationClosed", this,
+                SLOT(notificationClosed(uint)));
     connect(&m_scheduler, &QTimer::timeout, this, &Backend::schedulerTick);
     m_scheduler.start(1000);
     connect(&m_syncTimer, &QTimer::timeout, this, &Backend::sync);
@@ -1033,17 +1070,60 @@ void Backend::classifyNext() {
         m_store.exec("DELETE FROM service_state WHERE key='ai_error'");
         m_store.applyClassification(message["id"].toString(), r);
         if (r["action_needed"].toBool() || r["important"].toBool())
-            notify(tr("New Priority mail"), message["subject"].toString());
+            notify(tr("New Priority mail"), message["subject"].toString(),
+                   message["account_id"].toString(), message["thread_id"].toString());
         refresh();
     });
 }
-void Backend::notify(const QString &title, const QString &body) {
+void Backend::notify(const QString &title, const QString &body, const QString &account,
+                     const QString &thread) {
     if (!m_config.get("notifications").toBool())
         return;
     auto message = QDBusMessage::createMethodCall("org.freedesktop.Notifications",
                                                   "/org/freedesktop/Notifications",
                                                   "org.freedesktop.Notifications", "Notify");
-    message << QString("Omail") << uint(0) << QString("omail") << title << body << QStringList{}
-            << QVariantMap{} << int(8000);
-    QDBusConnection::sessionBus().asyncCall(message);
+    // "default" is the action a notification server runs when the notification is clicked.
+    message << QString("Omail") << uint(0) << QString("omail") << title << body
+            << QStringList{"default", tr("Open")}
+            << QVariantMap{{"desktop-entry", QString("omail")}} << int(8000);
+    auto watcher =
+        new QDBusPendingCallWatcher(QDBusConnection::sessionBus().asyncCall(message), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this,
+            [this, watcher, account, thread] {
+                const QDBusPendingReply<uint> reply = *watcher;
+                if (reply.isValid())
+                    m_notifications[reply.value()] = {account, thread};
+                watcher->deleteLater();
+            });
 }
+void Backend::notificationAction(uint id, const QString &action) {
+    const auto target = m_notifications.take(id);
+    if (action != "default" || target.isEmpty())
+        return;
+    auto bus = QDBusConnection::sessionBus();
+    if (bus.interface()->isServiceRegistered(WindowService)) {
+        bus.asyncCall(QDBusMessage::createMethodCall(WindowService, WindowPath, WindowService,
+                                                     "Show")
+                      << target.value(0) << target.value(1));
+        return;
+    }
+    const QStringList open{QCoreApplication::applicationFilePath(), "open", "--account",
+                           target.value(0), "--thread", target.value(1)};
+    // The daemon has no display. systemd-run starts the window with the session's
+    // graphical environment, which the login service may have been started without.
+    QProcess launcher;
+    launcher.setProgram("systemd-run");
+    launcher.setArguments(QStringList{"--user", "--quiet", "--collect", "--"} + open);
+    if (launcher.startDetached())
+        return;
+    auto environment = QProcessEnvironment::systemEnvironment();
+    if (environment.value("QT_QPA_PLATFORM") == "offscreen")
+        environment.remove("QT_QPA_PLATFORM");
+    if (environment.value("QT_QPA_PLATFORMTHEME") == "generic")
+        environment.remove("QT_QPA_PLATFORMTHEME");
+    launcher.setProgram(open.first());
+    launcher.setArguments(open.mid(1));
+    launcher.setProcessEnvironment(environment);
+    launcher.startDetached();
+}
+void Backend::notificationClosed(uint id) { m_notifications.remove(id); }

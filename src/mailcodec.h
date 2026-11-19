@@ -5,6 +5,7 @@
 
 namespace MailCodec {
 QString plainText(const QString &html);
+QString cleanText(QString text);
 QString utc(const QString &date, const QString &zone = {});
 QJsonObject googleMessage(const QJsonObject &raw, const QString &account);
 QJsonObject microsoftMessage(const QJsonObject &raw, const QString &account,

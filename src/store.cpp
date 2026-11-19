@@ -64,10 +64,14 @@ QJsonArray Store::query(const QString &sql, const QVariantList &args) const {
         m_error = q.lastError().text();
         return result;
     }
+    const QSqlRecord record = q.record();
+    QStringList names;
+    for (int i = 0; i < record.count(); ++i)
+        names << record.fieldName(i);
     while (q.next()) {
         QJsonObject row;
-        for (int i = 0; i < q.record().count(); ++i)
-            row[q.record().fieldName(i)] = QJsonValue::fromVariant(q.value(i));
+        for (int i = 0; i < names.size(); ++i)
+            row[names[i]] = QJsonValue::fromVariant(q.value(i));
         result.append(row);
     }
     return result;
@@ -102,6 +106,7 @@ bool Store::migrate() {
         "CREATE INDEX IF NOT EXISTS messages_thread ON "
         "messages(account_id,thread_id,received)",
         "CREATE INDEX IF NOT EXISTS messages_received ON messages(received)",
+        "CREATE INDEX IF NOT EXISTS messages_folder ON messages(folder,received)",
         "CREATE TABLE IF NOT EXISTS dismissals(account_id TEXT NOT "
         "NULL,thread_id TEXT NOT NULL,through_date TEXT NOT NULL,PRIMARY "
         "KEY(account_id,thread_id))",
@@ -136,13 +141,7 @@ bool Store::migrate() {
         "VALUES(new.id,new.subject,new.sender || ' ' || "
         "new.sender_email,new.body); END",
         "CREATE TRIGGER IF NOT EXISTS message_search_delete AFTER DELETE ON "
-        "messages BEGIN DELETE FROM message_search WHERE id=old.id; END",
-        "CREATE TRIGGER IF NOT EXISTS message_search_update AFTER UPDATE OF "
-        "subject,sender,sender_email,body ON messages BEGIN DELETE FROM "
-        "message_search WHERE id=old.id; INSERT INTO "
-        "message_search(id,subject,sender,body) "
-        "VALUES(new.id,new.subject,new.sender || ' ' || "
-        "new.sender_email,new.body); END"};
+        "messages BEGIN DELETE FROM message_search WHERE id=old.id; END"};
     if (!m_db.transaction())
         return false;
     for (const auto &sql : statements)
@@ -154,6 +153,41 @@ bool Store::migrate() {
     for (const auto &column : query("PRAGMA table_info(messages)"))
         hasReplyTo |= column.toObject()["name"] == "reply_to";
     if (!hasReplyTo && !exec("ALTER TABLE messages ADD COLUMN reply_to TEXT NOT NULL DEFAULT ''")) {
+        m_db.rollback();
+        return false;
+    }
+    if (one("PRAGMA user_version")["user_version"].toInt() < 1) {
+        // Bodies cached by earlier builds kept image placeholders and invisible preview padding.
+        // Sync rewrites recent mail with the new codec; this cleans everything else once.
+        // The old search trigger fired on every sync, even for unchanged rows, and each run
+        // scans the whole index. Replace it, and rebuild the index in one pass.
+        if (!exec("DROP TRIGGER IF EXISTS message_search_update")) {
+            m_db.rollback();
+            return false;
+        }
+        QString body = "body";
+        for (const int c : {0xFFFC, 0x034F, 0x00AD, 0x200B, 0x2060, 0xFEFF})
+            body = QString("replace(%1,char(%2),'')").arg(body).arg(c);
+        for (const char *edge : {"' '||char(8204)", "char(8204)||' '", "char(10)||char(8204)",
+                                 "char(8204)||char(10)"})
+            body = QString("replace(%1,%2,%3)")
+                       .arg(body, edge, QString(edge).replace("char(8204)", "''"));
+        if (!exec("UPDATE messages SET body=" + body + " WHERE body<>" + body) ||
+            !exec("DELETE FROM message_search") ||
+            !exec("INSERT INTO message_search(id,subject,sender,body) SELECT "
+                  "id,subject,sender || ' ' || sender_email,body FROM messages") ||
+            !exec("PRAGMA user_version=1")) {
+            m_db.rollback();
+            return false;
+        }
+    }
+    if (!exec("CREATE TRIGGER IF NOT EXISTS message_search_update AFTER UPDATE OF "
+              "subject,sender,sender_email,body ON messages WHEN old.subject IS NOT "
+              "new.subject OR old.sender IS NOT new.sender OR old.sender_email IS NOT "
+              "new.sender_email OR old.body IS NOT new.body BEGIN DELETE FROM "
+              "message_search WHERE id=old.id; INSERT INTO "
+              "message_search(id,subject,sender,body) VALUES(new.id,new.subject,new.sender "
+              "|| ' ' || new.sender_email,new.body); END")) {
         m_db.rollback();
         return false;
     }
@@ -191,13 +225,15 @@ bool Store::upsertMessage(const QJsonObject &m) {
                              "html",        "received",     "folder",     "unread",     "flagged",
                              "attachments", "internet_id",  "web_url"};
     QVariantList args;
-    QStringList marks, updates;
+    QStringList marks, updates, changed;
     for (const auto &f : fields) {
         args << (f == "unread" || f == "flagged" ? QVariant(m[f].toInt())
                                                  : QVariant(m[f].toString("")));
         marks << "?";
-        if (f != "id")
+        if (f != "id") {
             updates << f + "=excluded." + f;
+            changed << "messages." + f + " IS NOT excluded." + f;
+        }
     }
     const bool oldInitial =
         one("SELECT last_sync FROM accounts WHERE id=?", {m["account_id"].toString()})["last_sync"]
@@ -207,7 +243,10 @@ bool Store::upsertMessage(const QJsonObject &m) {
             QDateTime::currentDateTimeUtc().addDays(-1).toString(Qt::ISODateWithMs);
     args << (oldInitial ? -1 : 0);
     return exec("INSERT INTO messages(" + fields.join(',') + ",classified) VALUES(" +
-                    marks.join(',') + ",?) ON CONFLICT(id) DO UPDATE SET " + updates.join(','),
+                    marks.join(',') + ",?) ON CONFLICT(id) DO UPDATE SET " + updates.join(',') +
+                    // Sync re-reads every cached message. Leaving unchanged rows alone keeps
+                    // the database quiet, so open windows have nothing to reload.
+                    " WHERE " + changed.join(" OR "),
                 args);
 }
 QJsonArray Store::conversations(const QString &profile, const QString &folder,
@@ -240,7 +279,10 @@ QJsonArray Store::conversations(const QString &profile, const QString &folder,
             args << "%" + term + "%";
     }
     args << qBound(1, limit, 2000);
-    return query("WITH matching AS (SELECT m.*,a.email,a.profile_id,p.color,"
+    // Name the columns: m.* would drag every HTML body through the window functions.
+    return query("WITH matching AS (SELECT m.id,m.account_id,m.thread_id,m.received,m.unread,"
+                 "m.flagged,m.subject,m.sender,m.sender_email,substr(m.body,1,300) AS preview,"
+                 "m.reason,m.topic,a.email,a.profile_id,p.color,"
                  "CASE WHEN m.received>COALESCE(d.through_date,'') THEN m.priority ELSE 0 "
                  "END AS active_priority "
                  "FROM messages m JOIN accounts a ON a.id=m.account_id "
@@ -257,9 +299,28 @@ QJsonArray Store::conversations(const QString &profile, const QString &folder,
                      "any_priority FROM matching) "
                      "SELECT id,account_id,thread_id,received,count,any_unread AS "
                      "unread,any_flagged AS flagged,any_priority AS priority,"
-                     "subject,sender,sender_email,body,reason,topic,email,profile_id,"
+                     "subject,sender,sender_email,preview,reason,topic,email,profile_id,"
                      "color FROM ranked WHERE rn=1 ORDER BY received DESC LIMIT ?",
                  args);
+}
+QJsonObject Store::counts(const QString &profile) const {
+    const bool all = profile == "all" || profile.isEmpty();
+    // Same rules as conversations(): a conversation counts once if any message matches.
+    const QString key = "m.account_id||char(31)||m.thread_id";
+    QStringList columns;
+    for (const char *folder : {"inbox", "sent", "archive", "junk", "trash"})
+        columns << QString("COUNT(DISTINCT CASE WHEN m.folder='%1' THEN %2 END) AS %1")
+                       .arg(folder, key);
+    columns << "COUNT(DISTINCT CASE WHEN m.flagged=1 THEN " + key + " END) AS flagged"
+            << "COUNT(DISTINCT CASE WHEN m.priority=1 AND m.folder NOT IN "
+               "('junk','trash','sent','drafts') AND m.received>COALESCE(d.through_date,'') "
+               "THEN " +
+                   key + " END) AS priority";
+    return one("SELECT " + columns.join(',') +
+                   " FROM messages m JOIN accounts a ON a.id=m.account_id LEFT JOIN dismissals d "
+                   "ON d.account_id=m.account_id AND d.thread_id=m.thread_id" +
+                   (all ? QString() : QString(" WHERE a.profile_id=?")),
+               all ? QVariantList{} : QVariantList{profile});
 }
 QJsonArray Store::thread(const QString &account, const QString &conversation) const {
     return query("SELECT m.*,a.email AS account_email FROM messages m JOIN "

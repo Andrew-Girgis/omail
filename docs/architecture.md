@@ -12,11 +12,15 @@ SQLite WAL stores cached message bodies, normalized events, local drafts, classi
 
 One whole account belongs to one profile. Inbox is an ordinary provider folder; Priority overlaps mail folders and stores metadata only in Omail. Action needed OR important means priority. A dismissal records the newest received timestamp; a later important incoming message reopens the thread. Reading and replying do not dismiss it. Manual corrections are stored per message and win against an in-flight classifier response. They never create rules or training examples.
 
-Rows show conversations within the current view. Opening a conversation reads its cached messages across folders. Unknown Microsoft custom folders appear in Archive in 0.1. Tags are local per-message topics and appear as views; automatic classification does not mutate provider labels/folders. Explicit read, flag, move, calendar, and send actions synchronize with the provider.
+Rows show conversations within the current view. The list loads 200 conversations at a time and fetches more as you scroll; folder counts come from one aggregate query. The window reloads only when the cached data actually changes. Opening a conversation reads its cached messages across folders. Unknown Microsoft custom folders appear in Archive in 0.1. Tags are local per-message topics and appear as views; automatic classification does not mutate provider labels/folders. Explicit read, flag, move, calendar, and send actions synchronize with the provider.
 
 ## Cache and sync
 
 Sync reconciles paginated snapshots rather than provider push/delta streams. The default cache window is 90 days. Inbox messages older than a day at the first sync are cached without automatic classification; new incoming messages are classified afterward. Unresolved Priority and flagged messages remain available beyond the window. Explicit older searches retain fetched messages for another cache window. Mail outside the window may not reflect later provider changes until fetched again. Sync is serial within each account and guarded across processes. Calendar sync covers the previous 90 days and next 365 days; navigation outside that interval shows only already cached data.
+
+## Notifications
+
+The daemon posts a notification when the classifier marks new mail as Priority. Clicking it opens that conversation. One window runs per session: the window registers `app.omail.Omail` on the session bus, and a second `omail open` or a notification click brings the existing window forward instead of starting another. When no window is open, the daemon starts one through `systemd-run --user` so it gets the session's display environment.
 
 ## Scheduled delivery
 
@@ -43,7 +47,7 @@ The v1 CLI intentionally exposes no mail, calendar, send, delete, or approval mu
 
 ## Verification on this desktop
 
-The Qt Test suite reports 23 passed, 0 failed, and 1 optional local-model check skipped in its default offline run. It exercises provider pagination and token refresh with synthetic HTTP responses, reply recipients and attachments, Priority transitions, scheduling holds and concurrency, profile isolation, read-only CLI behavior, live theme/language changes, and the real QML editor at three window widths. UI regressions also cover floating field labels at all supported font extremes, empty account dropdowns, direct account-settings navigation, pane presets with custom config values, and actual sidebar pointer dragging with persisted and externally edited order.
+The Qt Test suite reports 27 passed, 0 failed, and 1 optional local-model check skipped in its default offline run. It exercises provider pagination and token refresh with synthetic HTTP responses, reply recipients and attachments, Priority transitions, scheduling holds and concurrency, profile isolation, read-only CLI behavior, live theme/language changes, and the real QML editor at three window widths. UI regressions also cover floating field labels at all supported font extremes, empty account dropdowns, direct account-settings navigation, pane presets with custom config values, and actual sidebar pointer dragging with persisted and externally edited order.
 
 The optional check was also run separately against the installed local `qwen3.5:4b` Ollama model and passed classification, summarization, and an answer with valid source citations. It used only made-up mail. Live Microsoft/Google authentication, synchronization, meeting responses, and actual delivery remain unverified until account registration and user sign-in are complete.
 

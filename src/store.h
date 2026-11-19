@@ -19,6 +19,7 @@ class Store {
     QJsonArray accounts(const QString &profile = {}) const;
     QJsonArray conversations(const QString &profile, const QString &folder,
                              const QString &search = {}, int limit = 500) const;
+    QJsonObject counts(const QString &profile) const;
     QJsonArray thread(const QString &account, const QString &conversation) const;
     QJsonArray events(const QString &profile, const QString &from, const QString &to) const;
     QJsonArray sources(const QString &profile, const QString &search, int limit = 12) const;

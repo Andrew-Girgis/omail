@@ -31,6 +31,9 @@ class Backend : public QObject {
     bool busy() const { return m_busy; }
     bool aiBusy() const { return m_aiBusy; }
     bool demo() const { return m_demo; }
+    static constexpr int PageSize = 200;
+    static inline const QString WindowService = "app.omail.Omail";
+    static inline const QString WindowPath = "/app/omail/Omail";
     bool startService();
     Q_INVOKABLE void refresh();
     Q_INVOKABLE void clearError();
@@ -38,6 +41,8 @@ class Backend : public QObject {
     Q_INVOKABLE void selectFolder(const QString &folder);
     Q_INVOKABLE void selectThread(const QString &account, const QString &thread);
     Q_INVOKABLE void search(const QString &term);
+    Q_INVOKABLE void loadMore();
+    Q_INVOKABLE void openThread(const QString &account, const QString &thread);
     Q_INVOKABLE void sync();
     Q_INVOKABLE void fetchOlder(const QString &account, const QString &query);
     Q_INVOKABLE bool setSetting(const QString &key, const QVariant &value);
@@ -89,6 +94,8 @@ class Backend : public QObject {
 
   private slots:
     void prepareForSleep(bool sleeping);
+    void notificationAction(uint id, const QString &action);
+    void notificationClosed(uint id);
 
   private:
     void fail(const QString &error);
@@ -97,7 +104,8 @@ class Backend : public QObject {
     void classifyNext();
     void sendClaimed(const QJsonObject &draft, std::shared_ptr<QLockFile> lock = {});
     QJsonObject findEvent(const QString &id) const;
-    void notify(const QString &title, const QString &body);
+    void notify(const QString &title, const QString &body, const QString &account,
+                const QString &thread);
     Config m_config;
     Store m_store;
     HttpClient m_http;
@@ -114,6 +122,8 @@ class Backend : public QObject {
     bool m_demo = false, m_busy = false, m_aiBusy = false, m_classifying = false;
     QTimer m_poll, m_syncTimer, m_scheduler, m_classifier;
     qint64 m_version = -1;
+    int m_limit = PageSize;
+    QHash<uint, QStringList> m_notifications;
     QDateTime m_previousTick, m_retryAi;
     bool m_onlineInterval = false;
     std::unique_ptr<QLockFile> m_serviceLock;

@@ -57,8 +57,22 @@ QByteArray folded64(const QByteArray &bytes) {
     return result;
 }
 } // namespace
+QString MailCodec::cleanText(QString text) {
+    // U+FFFC is what Qt leaves where an image was. The others are invisible padding that
+    // newsletters put in previews; fonts often draw them as boxes.
+    static const QRegularExpression invisible(
+        "[\\x{FFFC}\\x{034F}\\x{00AD}\\x{200B}\\x{2060}\\x{FEFF}]");
+    // A zero-width non-joiner matters between letters (Persian, Indic scripts), not as padding.
+    static const QRegularExpression padding("\\x{200C}(?!\\p{L})|(?<!\\p{L})\\x{200C}");
+    return text.remove(invisible).remove(padding);
+}
 QString MailCodec::plainText(const QString &html) {
-    return QTextDocumentFragment::fromHtml(html).toPlainText();
+    static const QRegularExpression lineEdges("[ \\t\\x{00A0}]+(?=\\n)|(?<=\\n)[ \\t\\x{00A0}]+");
+    static const QRegularExpression blankLines("\\n{3,}");
+    return cleanText(QTextDocumentFragment::fromHtml(html).toPlainText())
+        .remove(lineEdges)
+        .replace(blankLines, "\n\n")
+        .trimmed();
 }
 QString MailCodec::utc(const QString &date, const QString &zone) {
     QDateTime time = QDateTime::fromString(date, Qt::ISODateWithMs);
@@ -83,8 +97,7 @@ QJsonObject MailCodec::googleMessage(const QJsonObject &raw, const QString &acco
     QString text, html;
     QJsonArray attachments;
     parts(payload, text, html, attachments);
-    if (text.isEmpty())
-        text = plainText(html);
+    text = text.isEmpty() ? plainText(html) : cleanText(text);
     const auto labels = raw["labelIds"].toArray();
     QString folder = "archive";
     if (labels.contains("INBOX"))
@@ -154,7 +167,7 @@ QJsonObject MailCodec::microsoftMessage(const QJsonObject &raw, const QString &a
             {"sender_email", sender["address"]},
             {"reply_to", replyTo.join(", ")},
             {"recipients", recipients.join(", ")},
-            {"body", html.isEmpty() ? body["content"].toString() : plainText(html)},
+            {"body", html.isEmpty() ? cleanText(body["content"].toString()) : plainText(html)},
             {"html", html},
             {"received", utc(raw["receivedDateTime"].toString())},
             {"folder", folders.value(raw["parentFolderId"].toString(), "archive")},
