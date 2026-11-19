@@ -141,11 +141,14 @@ QString inlineMarkdown(const QTextBlock &block, const QString &lineBreak) {
             const auto label = QString(text).replace(QChar::LineSeparator, ' ').simplified();
             if (label.isEmpty())
                 continue;
+            // Fully encoded, the address cannot contain '<', '>', spaces, or quotes, so it
+            // cannot end the link early and inject Markdown such as an image.
+            const QString target = QString::fromLatin1(QUrl(href).toEncoded());
             const QString before = text.front().isSpace() ? " " : "",
                           after = text.back().isSpace() ? " " : "";
             piece = before +
-                    (label == href ? "<" + href + ">"
-                                   : "[" + escapeMarkdown(label) + "](<" + href + ">)") +
+                    (label == href ? "<" + target + ">"
+                                   : "[" + escapeMarkdown(label) + "](<" + target + ">)") +
                     after;
         } else {
             const auto lines = text.split(QChar::LineSeparator);

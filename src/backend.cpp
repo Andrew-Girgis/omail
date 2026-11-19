@@ -191,7 +191,11 @@ QString Backend::simplified(const QString &html, const QString &body, const QCol
     QFont font;
     font.setPixelSize(fontSize);
     document.setDefaultFont(font);
-    document.setMarkdown(markdown, QTextDocument::MarkdownDialectGitHub);
+    // Mail never contributes raw HTML here, and the view never shows images: both would let
+    // a message make the reading pane fetch something.
+    document.setMarkdown(markdown,
+                         QTextDocument::MarkdownFeatures(QTextDocument::MarkdownDialectGitHub |
+                                                         QTextDocument::MarkdownNoHTML));
     struct Range {
         int start, length;
         QTextCharFormat format;
@@ -239,6 +243,17 @@ QString Backend::simplified(const QString &html, const QString &body, const QCol
         cursor.setPosition(start);
         cursor.setPosition(end, QTextCursor::KeepAnchor);
         cursor.insertText(QString(QChar::LineSeparator));
+    }
+    QList<QPair<int, int>> images;
+    for (auto block = document.begin(); block.isValid(); block = block.next())
+        for (auto it = block.begin(); !it.atEnd(); ++it)
+            if (it.fragment().charFormat().isImageFormat())
+                images.prepend({it.fragment().position(), it.fragment().length()});
+    for (const auto &[start, length] : images) {
+        QTextCursor cursor(&document);
+        cursor.setPosition(start);
+        cursor.setPosition(start + length, QTextCursor::KeepAnchor);
+        cursor.removeSelectedText();
     }
     return document.toHtml();
 }
