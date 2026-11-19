@@ -38,6 +38,9 @@ class Backend : public QObject {
     bool startService();
     // QML reads "now" through the app clock so pinned repro runs agree with the backend.
     Q_INVOKABLE QDateTime currentTime() const { return Clock::nowUtc(); }
+    // The simplified message view: the message as Markdown, styled for the theme, as rich text.
+    Q_INVOKABLE QString simplified(const QString &html, const QString &body, const QColor &link,
+                                   int fontSize) const;
     Q_INVOKABLE void refresh();
     Q_INVOKABLE void clearError();
     Q_INVOKABLE void selectProfile(const QString &profile);

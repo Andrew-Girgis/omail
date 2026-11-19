@@ -296,7 +296,7 @@ Dialog {
                         }
                         OComboBox {
                             objectName: "messageViewSetting"
-                            model: [qsTr("Formatted"), qsTr("Plain text")]
+                            model: [qsTr("Formatted"), qsTr("Simplified")]
                             currentIndex: backend.settings.messageView === "plain" ? 1 : 0
                             onActivated: backend.setSetting("messageView", currentIndex ? "plain" : "formatted")
                         }

@@ -5,7 +5,11 @@
 #include <QLocale>
 #include <QObject>
 #include <QRegularExpression>
+#include <QFont>
+#include <QTextBlock>
 #include <QTextDocument>
+#include <QTextList>
+#include <QTextTable>
 #include <QTextDocumentFragment>
 #include <QTimeZone>
 #include <QUrl>
@@ -76,14 +80,218 @@ QString MailCodec::plainText(const QString &html) {
         .replace(blankLines, "\n\n")
         .trimmed();
 }
-QString MailCodec::markdown(const QString &html, const QString &text) {
-    // Baseline: Qt's own writer. Issue #10 replaces it.
+namespace {
+// Characters that would otherwise start Markdown syntax; all are legal backslash escapes.
+QString escapeMarkdown(const QString &text) {
+    static const QString special = QStringLiteral(R"(\`*_{}[]<>()#+-!|~)");
+    QString result;
+    result.reserve(text.size());
+    for (const QChar c : text) {
+        if (special.contains(c))
+            result += '\\';
+        result += c;
+    }
+    return result;
+}
+// Escapes text and turns written-out web addresses into autolinks. Trailing punctuation
+// stays outside the link.
+QString linkify(const QString &text) {
+    static const QRegularExpression url(R"(https?://[^\s<>"]+)",
+                                        QRegularExpression::CaseInsensitiveOption);
+    static const QRegularExpression trailing(R"([.,;:!?'")\]]+$)");
+    QString result;
+    qsizetype last = 0;
+    for (auto it = url.globalMatch(text); it.hasNext();) {
+        const auto match = it.next();
+        QString address = match.captured();
+        address.remove(trailing);
+        result += escapeMarkdown(text.mid(last, match.capturedStart() - last));
+        result += "<" + address + ">";
+        last = match.capturedStart() + address.size();
+    }
+    return result + escapeMarkdown(text.mid(last));
+}
+bool webLink(const QString &href) {
+    const QUrl url(href);
+    return (url.scheme() == "http" || url.scheme() == "https") && !url.host().isEmpty();
+}
+// Wraps text in a Markdown emphasis marker, keeping surrounding spaces outside it.
+QString emphasize(const QString &text, const QString &marker) {
+    const auto core = text.trimmed();
+    if (core.isEmpty() || marker.isEmpty())
+        return text;
+    const auto lead = text.indexOf(core);
+    return text.left(lead) + marker + core + marker + text.mid(lead + core.size());
+}
+QString inlineMarkdown(const QTextBlock &block, const QString &lineBreak) {
+    const bool heading = block.blockFormat().headingLevel() > 0;
+    QString result;
+    for (auto it = block.begin(); !it.atEnd(); ++it) {
+        const auto fragment = it.fragment();
+        const auto format = fragment.charFormat();
+        QString text = fragment.text();
+        text.remove(QChar::ObjectReplacementCharacter).replace(QChar::Nbsp, ' ');
+        text = MailCodec::cleanText(text);
+        if (text.isEmpty())
+            continue;
+        const QString href = format.anchorHref();
+        QString piece;
+        if (format.isAnchor() && webLink(href)) {
+            // Links around skipped images have no text left; spaces stay outside the link.
+            const auto label = QString(text).replace(QChar::LineSeparator, ' ').simplified();
+            if (label.isEmpty())
+                continue;
+            const QString before = text.front().isSpace() ? " " : "",
+                          after = text.back().isSpace() ? " " : "";
+            piece = before +
+                    (label == href ? "<" + href + ">"
+                                   : "[" + escapeMarkdown(label) + "](<" + href + ">)") +
+                    after;
+        } else {
+            const auto lines = text.split(QChar::LineSeparator);
+            QStringList escaped;
+            for (const auto &line : lines)
+                escaped << linkify(line);
+            piece = escaped.join(lineBreak);
+        }
+        QString marker;
+        if (!heading && format.fontWeight() >= QFont::DemiBold)
+            marker += "**";
+        if (format.fontItalic())
+            marker += "*";
+        // Emphasis cannot span a hard line break.
+        if (!piece.contains('\n'))
+            piece = emphasize(piece, marker);
+        result += piece;
+    }
+    // Two or more line breaks in a row (<br><br>) are a paragraph break.
+    const auto br = QRegularExpression::escape(lineBreak);
+    return result.replace(QRegularExpression(br + "[ \\t]*(?:" + br + "[ \\t]*)+"), "\n\n")
+        .trimmed();
+}
+struct MarkdownWriter {
+    QString lineBreak;
+    QStringList blocks;    // Finished Markdown blocks, joined by blank lines.
+    bool joinNext = false; // The last block was a tight line the next tight line may join.
+    void add(const QString &markdown, bool tight) {
+        if (markdown.isEmpty())
+            return;
+        if (tight && joinNext && !blocks.isEmpty())
+            blocks.last() += lineBreak + markdown;
+        else
+            blocks << markdown;
+        joinNext = tight;
+    }
+    void block(const QTextBlock &block) {
+        const auto text = inlineMarkdown(block, lineBreak);
+        if (text.isEmpty()) {
+            joinNext = false;
+            return;
+        }
+        const auto format = block.blockFormat();
+        if (const int level = format.headingLevel(); level > 0) {
+            blocks << QString(qMin(level, 6), '#') + " " + text;
+            joinNext = false;
+        } else if (const auto list = block.textList()) {
+            const bool ordered = list->format().style() <= QTextListFormat::ListDecimal &&
+                                 list->format().style() != QTextListFormat::ListDisc &&
+                                 list->format().style() != QTextListFormat::ListCircle &&
+                                 list->format().style() != QTextListFormat::ListSquare;
+            const QString marker =
+                ordered ? QString::number(list->itemNumber(block) + 1) + ". " : "- ";
+            const auto item =
+                QString(2 * qMax(0, list->format().indent() - 1), ' ') + marker + text;
+            if (!blocks.isEmpty() && list->itemNumber(block) > 0)
+                blocks.last() += "\n" + item;
+            else
+                blocks << item;
+            joinNext = false;
+        } else {
+            // Lines without paragraph spacing (div, br-separated blocks) stay together.
+            add(text, format.topMargin() == 0 && format.bottomMargin() == 0);
+        }
+    }
+    void frame(const QTextFrame *frame) {
+        for (auto it = frame->begin(); !it.atEnd(); ++it) {
+            if (const auto table = qobject_cast<QTextTable *>(it.currentFrame()))
+                this->table(table);
+            else if (it.currentFrame())
+                this->frame(it.currentFrame());
+            else
+                block(it.currentBlock());
+        }
+    }
+    // Email lays out pages with tables. A row of short single-line cells is data and
+    // stays on one line; anything else is layout and its cells become ordinary blocks.
+    void table(const QTextTable *table) {
+        for (int row = 0; row < table->rows(); ++row) {
+            QStringList cells;
+            bool data = true;
+            for (int column = 0; column < table->columns(); ++column) {
+                const auto cell = table->cellAt(row, column);
+                if (cell.column() != column)
+                    continue; // Spanned.
+                QStringList parts;
+                int blockCount = 0;
+                for (auto it = cell.begin(); !it.atEnd(); ++it) {
+                    if (it.currentFrame()) {
+                        data = false;
+                        break;
+                    }
+                    const auto text = inlineMarkdown(it.currentBlock(), lineBreak);
+                    if (!text.isEmpty()) {
+                        parts << text;
+                        ++blockCount;
+                        if (it.currentBlock().blockFormat().headingLevel() > 0 ||
+                            it.currentBlock().textList())
+                            data = false;
+                    }
+                }
+                if (blockCount > 1 || parts.join(' ').size() > 120)
+                    data = false;
+                if (!parts.isEmpty())
+                    cells << parts.join(' ');
+            }
+            if (data && cells.size() > 1) {
+                add(cells.join(" "), true);
+                continue;
+            }
+            for (int column = 0; column < table->columns(); ++column) {
+                const auto cell = table->cellAt(row, column);
+                if (cell.column() != column)
+                    continue;
+                for (auto it = cell.begin(); !it.atEnd(); ++it) {
+                    if (const auto inner = qobject_cast<QTextTable *>(it.currentFrame()))
+                        this->table(inner);
+                    else if (it.currentFrame())
+                        frame(it.currentFrame());
+                    else
+                        block(it.currentBlock());
+                }
+            }
+        }
+    }
+};
+} // namespace
+QString MailCodec::markdown(const QString &html, const QString &text, const QString &lineBreak) {
+    if (html.isEmpty()) {
+        // Plain-text mail: paragraphs are separated by blank lines, lines within one are kept.
+        QStringList paragraphs;
+        for (const auto &paragraph : cleanText(text).split(QRegularExpression("\\n\\s*\\n"))) {
+            QStringList lines;
+            for (const auto &line : paragraph.split('\n'))
+                if (!line.trimmed().isEmpty())
+                    lines << linkify(line.trimmed());
+            if (!lines.isEmpty())
+                paragraphs << lines.join(lineBreak);
+        }
+        return paragraphs.join("\n\n");
+    }
     QTextDocument document;
-    if (html.isEmpty())
-        document.setPlainText(text);
-    else
-        document.setHtml(html);
-    return document.toMarkdown();
+    document.setHtml(html);
+    MarkdownWriter writer{lineBreak};
+    writer.frame(document.rootFrame());
+    return writer.blocks.join("\n\n");
 }
 QString MailCodec::utc(const QString &date, const QString &zone) {
     QDateTime time = QDateTime::fromString(date, Qt::ISODateWithMs);

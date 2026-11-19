@@ -170,6 +170,42 @@ class OmailTests : public QObject {
             {}, "Price *today* only. #1 pick: https://example.test/a_b_c.\nThanks"));
         QVERIFY2(plain.second.contains("Price *today* only. #1 pick:"), qPrintable(plain.second));
         QCOMPARE(plain.first, QStringList{"https://example.test/a_b_c"});
+        // Links around images keep no empty link; spaces at link edges survive.
+        const auto edges =
+            MailCodec::markdown("<p><a href='https://example.test/logo'><img src='x.png'></a></p>"
+                                "<p><a href='https://example.test/a'>Alert for </a>"
+                                "<a href='https://example.test/a'><b>data</b></a></p>");
+        QVERIFY2(!edges.contains("[]"), qPrintable(edges));
+        QVERIFY2(rendered(edges).second.trimmed() == "Alert for data", qPrintable(edges));
+    }
+    void simplifiedViewIsStyledForTheTheme() {
+        // Issue #10: links use the theme accent, and lines broken within a paragraph stay in it.
+        QTemporaryDir dir;
+        Backend backend(dir.path() + "/data", dir.path() + "/config", true);
+        QTextDocument document;
+        document.setHtml(
+            backend.simplified(fixture("account-statement"), {}, QColor("#ff8800"), 15));
+        QStringList links;
+        bool amountWithTax = false;
+        for (auto block = document.begin(); block.isValid(); block = block.next()) {
+            const auto lines = block.text().split(QChar::LineSeparator);
+            amountWithTax |= lines.size() >= 2 && lines[0].startsWith("Amount due:") &&
+                             lines[1].startsWith("(including");
+            for (auto it = block.begin(); !it.atEnd(); ++it)
+                if (it.fragment().charFormat().isAnchor()) {
+                    links << it.fragment().charFormat().anchorHref();
+                    QCOMPARE(it.fragment().charFormat().foreground().color(), QColor("#ff8800"));
+                }
+        }
+        QVERIFY(amountWithTax);
+        // Bold that ends at a line break still closes (no literal asterisks).
+        QTextDocument bold;
+        bold.setHtml(
+            backend.simplified("<p><b>Your bill is ready.</b><br><b>Hello Alex,</b><br>Text</p>",
+                               {}, QColor("#ff8800"), 15));
+        QVERIFY2(!bold.toPlainText().contains('*'), qPrintable(bold.toPlainText()));
+        QVERIFY(links.contains("https://harbour.example/help"));
+        QVERIFY(!document.toPlainText().contains(QChar(0xE000)));
     }
     void mailTextDropsImagePlaceholdersAndPreviewPadding() {
         const auto text = MailCodec::plainText(QString::fromUtf8(

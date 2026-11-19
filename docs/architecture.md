@@ -40,7 +40,7 @@ The v1 CLI intentionally exposes no mail, calendar, send, delete, or approval mu
 
 - Personal Outlook, Microsoft 365 and Google accounts need user-owned OAuth registrations and possibly administrator consent. Live authentication is not verified until the user completes setup.
 - Outgoing attachments total at most 2.8 MB to stay within direct upload limits. Generic IMAP/SMTP, CalDAV, aliases/send-as, delegated/shared mailboxes, and provider-native scheduled send are not implemented.
-- Mail composition is plain text. Forwarding includes the cached text; reattach files explicitly. Formatted display blocks remote images and all automatic external resources.
+- Mail composition is plain text. Forwarding includes the cached text; reattach files explicitly. Formatted display blocks remote images and all automatic external resources. The simplified view converts the email to Markdown (`MailCodec::markdown`: layout tables unwrapped, headings, lists, and web links kept) and renders it in the theme; links open only after confirmation.
 - Calendars support create/edit, daily/weekly/monthly recurrence on creation, individual occurrence edits, and invitation responses. Complex recurrence editing, free/busy lookup, room/resource scheduling, and offline calendar mutation queues are not implemented.
 - Calendar conflicts can overlap visually in Week; Agenda shows every cached event separately.
 - English, Danish, and French UI catalogs are bundled; other Omarchy languages fall back to English.
@@ -51,7 +51,7 @@ All app time comes from one clock (`src/clock.h`). `OMAIL_NOW=2026-01-15T09:00:0
 
 ## Verification on this desktop
 
-The Qt Test suite reports 29 passed, 0 failed, and 1 optional local-model check skipped in its default offline run. It exercises provider pagination and token refresh with synthetic HTTP responses, reply recipients and attachments, Priority transitions, scheduling holds and concurrency, profile isolation, read-only CLI behavior, live theme/language changes, and the real QML editor at three window widths. UI regressions also cover floating field labels at all supported font extremes, empty account dropdowns, direct account-settings navigation, pane presets with custom config values, and actual sidebar pointer dragging with persisted and externally edited order.
+The Qt Test suite reports 32 passed, 0 failed, and 1 optional local-model check skipped in its default offline run. It exercises provider pagination and token refresh with synthetic HTTP responses, reply recipients and attachments, Priority transitions, scheduling holds and concurrency, profile isolation, read-only CLI behavior, live theme/language changes, and the real QML editor at three window widths. UI regressions also cover floating field labels at all supported font extremes, empty account dropdowns, direct account-settings navigation, pane presets with custom config values, and actual sidebar pointer dragging with persisted and externally edited order.
 
 The optional check was also run separately against the installed local `qwen3.5:4b` Ollama model and passed classification, summarization, and an answer with valid source citations. It used only made-up mail. Live Microsoft/Google authentication, synchronization, meeting responses, and actual delivery remain unverified until account registration and user sign-in are complete.
 

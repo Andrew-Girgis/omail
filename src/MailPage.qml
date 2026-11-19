@@ -574,18 +574,29 @@ Item {
                                     Layout.fillWidth: true
                                 }
                                 TextEdit {
+                                    id: simplifiedBody
+                                    objectName: "simplifiedBody"
                                     visible: !messageCard.rich
                                     Layout.fillWidth: true
                                     Layout.preferredHeight: contentHeight
-                                    text: modelData.body || qsTr("This message has no text body.")
+                                    property string styled: messageCard.rich ? "" : backend.simplified(modelData.html || "", modelData.body || "", theme.accent, backend.settings.fontSize)
+                                    text: styled || qsTr("This message has no text body.")
                                     readOnly: true
                                     selectByMouse: true
                                     wrapMode: TextEdit.Wrap
-                                    textFormat: TextEdit.PlainText
+                                    textFormat: styled ? TextEdit.RichText : TextEdit.PlainText
                                     color: theme.foreground
                                     font.pixelSize: backend.settings.fontSize
                                     selectionColor: theme.accent
                                     selectedTextColor: theme.accentForeground
+                                    onLinkActivated: function (link) {
+                                        window.showConfirm(qsTr("Open this link?"), link, function () {
+                                            backend.openLink(link);
+                                        });
+                                    }
+                                    HoverHandler {
+                                        cursorShape: simplifiedBody.hoveredLink ? Qt.PointingHandCursor : Qt.IBeamCursor
+                                    }
                                 }
                                 MailDocument {
                                     id: htmlBody
@@ -607,7 +618,7 @@ Item {
                                 }
                                 OButton {
                                     visible: !!modelData.html
-                                    text: messageCard.rich ? qsTr("Show plain text") : qsTr("Show formatted message")
+                                    text: messageCard.rich ? qsTr("Show simplified") : qsTr("Show formatted message")
                                     glyph: "eye"
                                     onClicked: messageCard.rich = !messageCard.rich
                                 }
