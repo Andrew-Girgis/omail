@@ -10,7 +10,7 @@ Each issue moves through five stages. The label says where it is; exactly one st
 | QA | `qa-passed` or `qa-failed` | QA verdict comment is on the PR |
 | Merge | closed | The maintainer merged; agents never merge |
 
-Screenshots go through `bin/evidence ISSUE FILE...`, which pushes them to the `qa-evidence` branch and prints Markdown image links. Name files `before-WIDTH.png` and `after-WIDTH.png`.
+Screenshots go through `bin/evidence ISSUE FILE...`, which pushes them to the `qa-evidence` branch and prints Markdown image links. Name files `before-WIDTH.png` and `after-WIDTH.png`, adding the fixture or view when an issue has several (`before-statement-1000.png`).
 
 ## Report
 
