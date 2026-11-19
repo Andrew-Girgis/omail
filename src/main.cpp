@@ -9,6 +9,8 @@
 #include <QDBusMessage>
 #include <QFileInfo>
 #include <QGuiApplication>
+#include <QJsonArray>
+#include <QJsonDocument>
 #include <QProcess>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
@@ -76,6 +78,20 @@ int main(int argc, char **argv) {
         const QString error = backend.loadFixtures(fixtures);
         if (!error.isEmpty()) {
             QTextStream(stderr) << error << "\n";
+            return 1;
+        }
+    }
+    // --set KEY=VALUE (repeatable) gives repro runs specific settings. Demo settings live in a
+    // temporary directory, so this never touches the real configuration.
+    for (int i = arguments.indexOf("--set"); i >= 0 && i + 1 < arguments.size();
+         i = arguments.indexOf("--set", i + 2)) {
+        const QString pair = arguments[i + 1], key = pair.section('=', 0, 0),
+                      text = pair.section('=', 1);
+        const auto json = QJsonDocument::fromJson("[" + text.toUtf8() + "]").array();
+        const QVariant value = json.size() == 1 ? json.first().toVariant() : QVariant(text);
+        if (!demo || !backend.setSetting(key, value)) {
+            QTextStream(stderr) << "Cannot apply --set " << pair
+                                << (demo ? "" : ": --set needs --demo") << "\n";
             return 1;
         }
     }

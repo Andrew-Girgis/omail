@@ -20,6 +20,7 @@ TZ=UTC OMAIL_NOW=2026-01-15T09:00:00Z build/omail --demo --fixtures tests/fixtur
 
 - `OMAIL_NOW` pins the app clock (`src/clock.h`); read time through `Clock`, never the system clock, so pinned runs stay identical. `TZ=UTC` pins "today".
 - `--fixtures DIR` loads `NAME.json` + its HTML body into the demo inbox as thread `fixture-NAME`.
+- `--set KEY=VALUE` (repeatable, demo only) applies a setting, e.g. `--set messageView=plain`; keys are in `omail config schema --json`.
 - Check at 1440 (three panes), 1000 (two), and 420 (one).
 - Pinned demo runs produce byte-identical PNGs; a hash change means the pixels changed.
 
