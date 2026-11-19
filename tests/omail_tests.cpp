@@ -207,6 +207,33 @@ class OmailTests : public QObject {
         QVERIFY(links.contains("https://harbour.example/help"));
         QVERIFY(!document.toPlainText().contains(QChar(0xE000)));
     }
+    void simplifiedViewLoadsNothingFromLinkAddresses() {
+        // PR #14 QA: a link address must not break out of its Markdown link and inject an
+        // image, which the reading pane would then fetch (remote or file://).
+        const QString html =
+            "<p><a href='https://probe.example/a>)![remote](http://127.0.0.1:9/pixel.png)'>"
+            "Read more</a></p>"
+            "<p><a href='https://probe.example/b>)![local](file:///etc/hostname)'>"
+            "Open</a></p>"
+            "<p><a href='https://probe.example/c>![x](http://127.0.0.1:9/c.png)'>"
+            "https://probe.example/c>![x](http://127.0.0.1:9/c.png)</a></p>";
+        QTextDocument markdown;
+        markdown.setMarkdown(MailCodec::markdown(html), QTextDocument::MarkdownDialectGitHub);
+        QTemporaryDir dir;
+        Backend backend(dir.path() + "/data", dir.path() + "/config", true);
+        QTextDocument view;
+        view.setHtml(backend.simplified(html, {}, QColor("#ff8800"), 15));
+        for (const auto *document : {&markdown, &view})
+            for (auto block = document->begin(); block.isValid(); block = block.next())
+                for (auto it = block.begin(); !it.atEnd(); ++it)
+                    QVERIFY2(!it.fragment().charFormat().isImageFormat(),
+                             qPrintable(it.fragment().charFormat().toImageFormat().name()));
+        QVERIFY(!backend.simplified(html, {}, QColor("#ff8800"), 15).contains("<img"));
+        // The link still opens where the email pointed.
+        QVERIFY(rendered(MailCodec::markdown(html))
+                    .first.first()
+                    .startsWith("https://probe.example/a"));
+    }
     void mailTextDropsImagePlaceholdersAndPreviewPadding() {
         const auto text = MailCodec::plainText(QString::fromUtf8(
             "<div>Sale ends today͏ ‌ ͏ ‌ ­</div><img src='x.png'>"
