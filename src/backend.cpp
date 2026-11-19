@@ -19,6 +19,10 @@
 #include <QSaveFile>
 #include <QTemporaryDir>
 #include <QUuid>
+#include <QTextBlock>
+#include <QTextCursor>
+#include <QTextDocument>
+#include <QTextList>
 
 namespace {
 QString json(const QJsonArray &o) {
@@ -172,6 +176,86 @@ void Backend::loadMore() {
         return;
     m_limit = qMin(m_limit + PageSize, 2000);
     refresh();
+}
+QString Backend::simplified(const QString &html, const QString &body, const QColor &link,
+                            int fontSize) const {
+    // Qt imports a Markdown hard break as a new paragraph. A private-use placeholder keeps
+    // broken lines in one paragraph until it becomes a real line separator below.
+    // Spaces around it let emphasis close before a break (Markdown needs whitespace there).
+    const QChar placeholder(0xE000);
+    const auto markdown =
+        MailCodec::markdown(html, body, QStringLiteral(" ") + placeholder + QStringLiteral(" "));
+    if (markdown.isEmpty())
+        return {};
+    QTextDocument document;
+    QFont font;
+    font.setPixelSize(fontSize);
+    document.setDefaultFont(font);
+    // Mail never contributes raw HTML here, and the view never shows images: both would let
+    // a message make the reading pane fetch something.
+    document.setMarkdown(markdown,
+                         QTextDocument::MarkdownFeatures(QTextDocument::MarkdownDialectGitHub |
+                                                         QTextDocument::MarkdownNoHTML));
+    struct Range {
+        int start, length;
+        QTextCharFormat format;
+    };
+    QList<Range> ranges;
+    for (auto block = document.begin(); block.isValid(); block = block.next()) {
+        const int level = block.blockFormat().headingLevel();
+        const bool listItem = block.textList() && block.next().isValid() &&
+                              block.next().textList() == block.textList();
+        auto format = block.blockFormat();
+        format.setTopMargin(level ? fontSize : 0);
+        format.setBottomMargin(listItem ? fontSize * 0.25 : fontSize * 0.75);
+        format.setLineHeight(level ? 115 : 140, QTextBlockFormat::ProportionalHeight);
+        QTextCursor(block).setBlockFormat(format);
+        for (auto it = block.begin(); !it.atEnd(); ++it) {
+            auto chars = it.fragment().charFormat();
+            if (level) {
+                chars.clearProperty(QTextFormat::FontSizeAdjustment);
+                chars.setProperty(QTextFormat::FontPixelSize,
+                                  qRound(fontSize * (level == 1   ? 1.4
+                                                     : level == 2 ? 1.2
+                                                                  : 1.05)));
+                chars.setFontWeight(QFont::DemiBold);
+            }
+            if (chars.isAnchor()) {
+                chars.setForeground(link);
+                chars.setFontUnderline(true);
+            }
+            ranges << Range{it.fragment().position(), it.fragment().length(), chars};
+        }
+    }
+    for (const auto &range : ranges) {
+        QTextCursor cursor(&document);
+        cursor.setPosition(range.start);
+        cursor.setPosition(range.start + range.length, QTextCursor::KeepAnchor);
+        cursor.setCharFormat(range.format);
+    }
+    for (auto cursor = document.find(QString(placeholder)); !cursor.isNull();
+         cursor = document.find(QString(placeholder), cursor)) {
+        int start = cursor.selectionStart(), end = cursor.selectionEnd();
+        if (document.characterAt(start - 1) == ' ')
+            --start;
+        if (document.characterAt(end) == ' ')
+            ++end;
+        cursor.setPosition(start);
+        cursor.setPosition(end, QTextCursor::KeepAnchor);
+        cursor.insertText(QString(QChar::LineSeparator));
+    }
+    QList<QPair<int, int>> images;
+    for (auto block = document.begin(); block.isValid(); block = block.next())
+        for (auto it = block.begin(); !it.atEnd(); ++it)
+            if (it.fragment().charFormat().isImageFormat())
+                images.prepend({it.fragment().position(), it.fragment().length()});
+    for (const auto &[start, length] : images) {
+        QTextCursor cursor(&document);
+        cursor.setPosition(start);
+        cursor.setPosition(start + length, QTextCursor::KeepAnchor);
+        cursor.removeSelectedText();
+    }
+    return document.toHtml();
 }
 QString Backend::loadFixtures(const QString &directory) {
     // Each fixture is NAME.json ({subject, sender, sender_email, minutes_ago, html}) with

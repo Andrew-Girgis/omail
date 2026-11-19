@@ -18,6 +18,8 @@
 #include <QQuickWindow>
 #include <QScopeGuard>
 #include <QTemporaryDir>
+#include <QTextBlock>
+#include <QTextDocument>
 #include <QUrlQuery>
 #include <QtTest>
 
@@ -95,6 +97,22 @@ class OmailTests : public QObject {
                 {"topic", "Planning"}};
     }
   private slots:
+    static QString fixture(const QString &name) {
+        QFile file(QFINDTESTDATA("fixtures/mail/" + name + ".html"));
+        return file.open(QIODevice::ReadOnly) ? QString::fromUtf8(file.readAll()) : QString();
+    }
+    // Renders Markdown the way the simplified view does; returns link targets and visible text.
+    static QPair<QStringList, QString> rendered(const QString &markdown) {
+        QTextDocument document;
+        document.setMarkdown(markdown, QTextDocument::MarkdownDialectGitHub);
+        QStringList links;
+        for (auto block = document.begin(); block.isValid(); block = block.next())
+            for (auto it = block.begin(); !it.atEnd(); ++it)
+                if (it.fragment().charFormat().isAnchor())
+                    links << it.fragment().charFormat().anchorHref();
+        links.removeDuplicates();
+        return {links, document.toPlainText()};
+    }
     void initTestCase() {
         QQuickStyle::setStyle("Material");
         qmlRegisterType<MailDocument>("Omail", 1, 0, "MailDocument");
@@ -115,6 +133,106 @@ class OmailTests : public QObject {
         QCOMPARE(row["subject"].toString(), QString("New"));
         QCOMPARE(row["count"].toInt(), 2);
         QCOMPARE(row["unread"].toInt(), 1);
+    }
+    void simplifiedViewKeepsStructureAndLinks() {
+        // Issue #10: headings, bullets, and links survive; layout tables do not become pipes.
+        const auto newsletter = MailCodec::markdown(fixture("newsletter-fixed-width"));
+        QVERIFY2(!newsletter.contains('|'), qPrintable(newsletter));
+        QVERIFY2(newsletter.contains(QRegularExpression("^# This week in quiet software$",
+                                                        QRegularExpression::MultilineOption)),
+                 qPrintable(newsletter));
+        QVERIFY(newsletter.contains(QRegularExpression("^- Why the slowest feature is often",
+                                                       QRegularExpression::MultilineOption)));
+        QVERIFY(
+            rendered(newsletter).first.contains("https://northwind.example/stories/slow-features"));
+
+        const auto statement = MailCodec::markdown(fixture("account-statement"));
+        QVERIFY2(!statement.contains("|-"), qPrintable(statement));
+        // A label/value row stays on one line.
+        QVERIFY2(rendered(statement).second.contains(QRegularExpression(
+                     "^Amount due:\\s+\\$84\\.20", QRegularExpression::MultilineOption)),
+                 qPrintable(rendered(statement).second));
+        const auto statementLinks = rendered(statement).first;
+        for (const QString path : {"/account", "/help", "/outages", "/contact", "/privacy"})
+            QVERIFY2(statementLinks.contains("https://harbour.example" + path),
+                     qPrintable(statementLinks.join(' ')));
+    }
+    void simplifiedViewLinksWrittenAddresses() {
+        // Issue #10: written-out addresses are clickable, without trailing punctuation.
+        const auto notice = rendered(MailCodec::markdown(fixture("security-notice"))).first;
+        QVERIFY2(notice.contains("https://codehost.example/settings/security-log") &&
+                     notice.contains("https://codehost.example/contact") &&
+                     notice.contains(
+                         "https://codehost.example/settings/connections/applications/5a7e3c19"),
+                 qPrintable(notice.join(' ')));
+        // Plain-text mail: Markdown characters stay literal, the address becomes a link.
+        const auto plain = rendered(MailCodec::markdown(
+            {}, "Price *today* only. #1 pick: https://example.test/a_b_c.\nThanks"));
+        QVERIFY2(plain.second.contains("Price *today* only. #1 pick:"), qPrintable(plain.second));
+        QCOMPARE(plain.first, QStringList{"https://example.test/a_b_c"});
+        // Links around images keep no empty link; spaces at link edges survive.
+        const auto edges =
+            MailCodec::markdown("<p><a href='https://example.test/logo'><img src='x.png'></a></p>"
+                                "<p><a href='https://example.test/a'>Alert for </a>"
+                                "<a href='https://example.test/a'><b>data</b></a></p>");
+        QVERIFY2(!edges.contains("[]"), qPrintable(edges));
+        QVERIFY2(rendered(edges).second.trimmed() == "Alert for data", qPrintable(edges));
+    }
+    void simplifiedViewIsStyledForTheTheme() {
+        // Issue #10: links use the theme accent, and lines broken within a paragraph stay in it.
+        QTemporaryDir dir;
+        Backend backend(dir.path() + "/data", dir.path() + "/config", true);
+        QTextDocument document;
+        document.setHtml(
+            backend.simplified(fixture("account-statement"), {}, QColor("#ff8800"), 15));
+        QStringList links;
+        bool amountWithTax = false;
+        for (auto block = document.begin(); block.isValid(); block = block.next()) {
+            const auto lines = block.text().split(QChar::LineSeparator);
+            amountWithTax |= lines.size() >= 2 && lines[0].startsWith("Amount due:") &&
+                             lines[1].startsWith("(including");
+            for (auto it = block.begin(); !it.atEnd(); ++it)
+                if (it.fragment().charFormat().isAnchor()) {
+                    links << it.fragment().charFormat().anchorHref();
+                    QCOMPARE(it.fragment().charFormat().foreground().color(), QColor("#ff8800"));
+                }
+        }
+        QVERIFY(amountWithTax);
+        // Bold that ends at a line break still closes (no literal asterisks).
+        QTextDocument bold;
+        bold.setHtml(
+            backend.simplified("<p><b>Your bill is ready.</b><br><b>Hello Alex,</b><br>Text</p>",
+                               {}, QColor("#ff8800"), 15));
+        QVERIFY2(!bold.toPlainText().contains('*'), qPrintable(bold.toPlainText()));
+        QVERIFY(links.contains("https://harbour.example/help"));
+        QVERIFY(!document.toPlainText().contains(QChar(0xE000)));
+    }
+    void simplifiedViewLoadsNothingFromLinkAddresses() {
+        // PR #14 QA: a link address must not break out of its Markdown link and inject an
+        // image, which the reading pane would then fetch (remote or file://).
+        const QString html =
+            "<p><a href='https://probe.example/a>)![remote](http://127.0.0.1:9/pixel.png)'>"
+            "Read more</a></p>"
+            "<p><a href='https://probe.example/b>)![local](file:///etc/hostname)'>"
+            "Open</a></p>"
+            "<p><a href='https://probe.example/c>![x](http://127.0.0.1:9/c.png)'>"
+            "https://probe.example/c>![x](http://127.0.0.1:9/c.png)</a></p>";
+        QTextDocument markdown;
+        markdown.setMarkdown(MailCodec::markdown(html), QTextDocument::MarkdownDialectGitHub);
+        QTemporaryDir dir;
+        Backend backend(dir.path() + "/data", dir.path() + "/config", true);
+        QTextDocument view;
+        view.setHtml(backend.simplified(html, {}, QColor("#ff8800"), 15));
+        for (const auto *document : {&markdown, &view})
+            for (auto block = document->begin(); block.isValid(); block = block.next())
+                for (auto it = block.begin(); !it.atEnd(); ++it)
+                    QVERIFY2(!it.fragment().charFormat().isImageFormat(),
+                             qPrintable(it.fragment().charFormat().toImageFormat().name()));
+        QVERIFY(!backend.simplified(html, {}, QColor("#ff8800"), 15).contains("<img"));
+        // The link still opens where the email pointed.
+        QVERIFY(rendered(MailCodec::markdown(html))
+                    .first.first()
+                    .startsWith("https://probe.example/a"));
     }
     void mailTextDropsImagePlaceholdersAndPreviewPadding() {
         const auto text = MailCodec::plainText(QString::fromUtf8(
